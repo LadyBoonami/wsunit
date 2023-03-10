@@ -12,29 +12,16 @@ using namespace std;
 using namespace boost;
 using namespace boost::filesystem;
 
-// Logging -------------------------------------------------------------------------------------------------------------
-
-class log {
-	public:
-		static bool verbose;
-		static void debug(string s);
-		static void note (string s);
-		static void warn (string s);
-		static void err  (string s);
-		static void fatal(string s);
-};
-
 class unit {
-	// Constructors ----------------------------------------------------------------------------------------------------
+	friend class depgraph;
 
 	private:
 		unit(string name);
 
-	// Properties ------------------------------------------------------------------------------------------------------
-
 	public:
 		string name     (void);
-		path   confpath (void);
+		string term_name(void);
+		path   dir      (void);
 		bool   running  (void);
 		bool   ready    (void);
 
@@ -46,53 +33,20 @@ class unit {
 		bool has_run_script  (void);
 		bool has_stop_script (void);
 
-	// Settings --------------------------------------------------------------------------------------------------------
-
-	public:
 		static path confdir;
 		static path statedir;
 		static bool in_shutdown;
 
-	// Depgraph --------------------------------------------------------------------------------------------------------
-
-	public:
-		static void refresh_depgraph(void);
-		static void start_stop_units(void);
-
 	private:
-		static map<string, shared_ptr<unit>> units;
-
-		static void depgraph_del_old_units(void);
-		static void depgraph_add_new_units(void);
-		static void depgraph_del_old_deps (void);
-		static void depgraph_add_new_deps (void);
-		static void adddep(string fst, string snd);
-
-	// Object State ----------------------------------------------------------------------------------------------------
-
-	private:
-		string name_;
+		const string name_;
+		enum { DOWN, IN_START, IN_RUN, UP, IN_STOP } state;
 		vector<weak_ptr<unit>> deps;
 		vector<weak_ptr<unit>> revdeps;
-		enum { DOWN, IN_START, IN_RUN, UP, IN_STOP } state;
 		pid_t running_pid;
 
-	// State Transitions -----------------------------------------------------------------------------------------------
-
-	public:
-		static void start(shared_ptr<unit> u);
-		static void stop (shared_ptr<unit> u);
-
 	private:
-		static deque<weak_ptr<unit>> to_start;
-		static deque<weak_ptr<unit>> to_stop ;
-
-		static void start_stop_step(void);
-		static void start_step     (void);
-		static void stop_step      (void);
-
-		static void start_step(shared_ptr<unit> u);
-		static void stop_step (shared_ptr<unit> u);
+		static void start_step(shared_ptr<unit> u, bool& changed);
+		static void stop_step (shared_ptr<unit> u, bool& changed);
 
 		static bool exec_start_script(shared_ptr<unit> u);
 		static bool exec_run_script  (shared_ptr<unit> u);
@@ -101,11 +55,55 @@ class unit {
 		static void on_start_exit(pid_t pid, shared_ptr<unit> u, int status);
 		static void on_run_exit  (pid_t pid, shared_ptr<unit> u, int status);
 		static void on_stop_exit (pid_t pid, shared_ptr<unit> u, int status);
+};
+
+class depgraph {
+	public:
+		static void refresh(void);
+		static void start_stop_units(void);
+
+		static void start(shared_ptr<unit> u);
+		static void stop (shared_ptr<unit> u);
+
+		static void queue_step(void);
+
+	private:
+		static map<string, shared_ptr<unit>> units;
+
+		static void del_old_units(void);
+		static void add_new_units(void);
+		static void del_old_deps (void);
+		static void add_new_deps (void);
+
+		static void adddep(string fst, string snd);
+
+
+		static deque<weak_ptr<unit>> to_start;
+		static deque<weak_ptr<unit>> to_stop ;
+
+		static void start_step(bool& changed);
+		static void stop_step (bool& changed);
 
 		static void write_state(void);
 };
 
-// Process Management --------------------------------------------------------------------------------------------------
+class log {
+	public:
+		static bool verbose;
+		static void debug(string s);
+		static void note (string s);
+		static void warn (string s);
+		static void err  (string s);
+		static void fatal(string s);
+};
+
+bool contains(const vector<weak_ptr<unit>>& v, const string& name);
+
+template <class T, class F, class R> R with_weak_ptr(const weak_ptr<T>& wp, R def, F fn) {
+	shared_ptr<T> sp = wp.lock();
+	if (!sp) return def;
+	return fn(sp);
+}
 
 typedef void (*term_handler)(pid_t, shared_ptr<unit>, int);
 void term_add(pid_t pid, term_handler h, shared_ptr<unit> u);
@@ -114,6 +112,5 @@ void term_handle(pid_t pid, int status);
 pid_t fork_exec(const path& p);
 
 void signal_loop(void);
+void waitall(void);
 int main(int argc, char** argv);
-
-bool contains(const vector<weak_ptr<unit>>& v, const string& name);

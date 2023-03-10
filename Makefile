@@ -1,13 +1,27 @@
+#CXX=g++
+#CXXFLAGS=-fmax-errors=1 -Og
+
 CXX=clang++
-CXXFLAGS=-O0 -ggdb -fsanitize=address -fsanitize=undefined -Wall -Wextra -lboost_filesystem -ferror-limit=1 -std=c++17
+CXXFLAGS=-ferror-limit=1 -O0
+
+CXXFLAGS+=-ggdb -fsanitize=address -fsanitize=undefined -Wall -Wextra -std=c++17
+LDFLAGS=-lboost_filesystem -fsanitize=address -fsanitize=undefined
+
+hdrs=wsunit.hpp
+srcs=depgraph.cpp main.cpp unit.cpp util.cpp
+objs=$(srcs:.cpp=.o)
 
 all: wsunit
-wsunit: wsunit.cpp wsunit.hpp
-	$(CXX) $(CXXFLAGS) $< -o $@
+wsunit: $(objs)
+	$(CXX) $(LDFLAGS) $^ -o $@
+
+$(objs): %.o: %.cpp $(hdrs)
+
+
 
 .PHONY: clean
 clean:
-	-rm wsunit
+	-rm wsunit *.o
 
 .PHONY: dot
 dot:
