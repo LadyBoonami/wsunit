@@ -26,8 +26,10 @@ class unit {
 		bool   ready    (void);
 
 		bool needed   (void);
+		bool masked   (void);
 		bool can_start(void);
 		bool can_stop (void);
+		bool restart  (void);
 
 		bool has_start_script(void);
 		bool has_run_script  (void);
@@ -37,12 +39,18 @@ class unit {
 		static path statedir;
 		static bool in_shutdown;
 
+		enum state_t { DOWN, IN_START, IN_RUN, UP, IN_STOP };
+		static string state_descr     (state_t state);
+		static string term_state_descr(state_t state);
+
 	private:
 		const string name_;
-		enum { DOWN, IN_START, IN_RUN, UP, IN_STOP } state;
+		state_t state;
 		vector<weak_ptr<unit>> deps;
 		vector<weak_ptr<unit>> revdeps;
 		pid_t running_pid;
+
+		void set_state(state_t state);
 
 	private:
 		static void start_step(shared_ptr<unit> u, bool& changed);
@@ -58,6 +66,8 @@ class unit {
 };
 
 class depgraph {
+	friend class unit;
+
 	public:
 		static void refresh(void);
 		static void start_stop_units(void);
@@ -104,6 +114,8 @@ template <class T, class F, class R> R with_weak_ptr(const weak_ptr<T>& wp, R de
 	if (!sp) return def;
 	return fn(sp);
 }
+
+string signal_string(int signum);
 
 typedef void (*term_handler)(pid_t, shared_ptr<unit>, int);
 void term_add(pid_t pid, term_handler h, shared_ptr<unit> u);

@@ -1,4 +1,8 @@
-#include "wsunit.cpp"
+#include "wsunitd.hpp"
+
+#include <iostream>
+
+#include <signal.h>
 
 
 
@@ -40,6 +44,10 @@ pid_t fork_exec(const path& p) {
 		log::warn("could not start " + p.string() + ": " + strerror(errno));
 
 	return pid;
+}
+
+string signal_string(int signum) {
+	return string("SIG") + sigabbrev_np(signum) + " (" + to_string(signum) + ")";
 }
 
 map<pid_t, pair<term_handler, shared_ptr<unit>>> term_map;

@@ -1,4 +1,4 @@
-#include "wsunit.hpp"
+#include "wsunitd.hpp"
 
 #include <fstream>
 
@@ -13,8 +13,8 @@ void depgraph::refresh(void) {
 
 void depgraph::start_stop_units(void) {
 	for (auto& [n, u] : units)
-		if (u->needed()) start(u);
-		else             stop (u);
+		if (u->needed() && !u->masked()) start(u);
+		else                             stop (u);
 }
 
 void depgraph::start(shared_ptr<unit> u) {
@@ -141,7 +141,7 @@ void depgraph::queue_step(void) {
 
 	if (unit::in_shutdown && to_start.empty() && to_stop.empty()) {
 		for (auto& [n, u] : units)
-			if (u->running()) return;
+			if (!u->needed() && u->running()) return;
 
 		exit(0);
 	}
@@ -261,7 +261,13 @@ void depgraph::write_state(void) {
 	ofstream o(unit::statedir / "state.dot");
 	o << "digraph {" << endl;
 	for (auto& [n, u] : units) {
-		o << "\t\"" << n << "\" [label=\"" << n << endl << (u->running() ? "running" : "not running") << endl << (u->ready() ? "ready" : "not ready") << "\"];" << endl;
+		o << "\t\"" << n << "\""
+			<< " ["
+				<< "label=\"" << n << endl << unit::state_descr(u->state) << "\""
+				<< ", style=\"" << (exists(unit::statedir / "masked" / n) ? "dashed" : exists(unit::statedir / "wanted" / n) ? "bold" : "solid") << "\""
+				<< ", color=\"" << (u->ready() ? "green" : u->running() ? "blue" : "black") << "\""
+			<<"];" << endl;
+
 		for (auto& d : u->deps) {
 			auto d_ = d.lock();
 			if (d_) o << "\t\"" << n << "\" -> \"" << d_->name() << "\";" << endl;
