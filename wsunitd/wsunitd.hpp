@@ -25,6 +25,7 @@ class unit {
 		bool   running  (void);
 		bool   ready    (void);
 
+		bool wanted   (void);
 		bool needed   (void);
 		bool masked   (void);
 		bool can_start(void);
@@ -76,6 +77,8 @@ class depgraph {
 		static void stop (shared_ptr<unit> u);
 
 		static void queue_step(void);
+
+		static void report(void);
 
 	private:
 		static map<string, shared_ptr<unit>> units;

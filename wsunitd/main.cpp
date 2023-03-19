@@ -1,5 +1,6 @@
 #include "wsunitd.hpp"
 
+#include <fstream>
 #include <iostream>
 
 #include <signal.h>
@@ -20,6 +21,8 @@ void signal_loop(void) {
 	for (;;) {
 		log::debug("check for pending zombies");
 		waitall();
+
+		depgraph::report();
 
 		log::debug("wait for next signal");
 		int signum;
@@ -93,6 +96,8 @@ int main(int argc, char** argv) {
 	if (!is_directory(unit::statedir / "wanted"  )) create_directory(unit::statedir / "wanted"  );
 	if (!is_directory(unit::statedir / "masked"  )) create_directory(unit::statedir / "masked"  );
 	if (!is_directory(unit::statedir / "state"   )) create_directory(unit::statedir / "state"   );
+
+	ofstream(unit::statedir / "wsunitd.pid") << getpid() << endl;
 
 	depgraph::refresh();
 	depgraph::start_stop_units();

@@ -139,12 +139,37 @@ void depgraph::queue_step(void) {
 		else         log::debug("no global state change, done processing queues");
 	} while (changed);
 
-	if (unit::in_shutdown && to_start.empty() && to_stop.empty()) {
+	if (unit::in_shutdown) {
 		for (auto& [n, u] : units)
-			if (!u->needed() && u->running()) return;
+			if (!u->needed() && u->running()) {
+				log::debug("shutdown: waiting for " + u->term_name());
+				return;
+			}
+
+		if (units.count("@shutdown") > 0 && !units.at("@shutdown")->ready())
+			return;
 
 		exit(0);
 	}
+}
+
+void depgraph::report(void) {
+	log::debug("current state:");
+	for (auto& [n, u] : units)
+		log::debug(" - " + u->term_name() + " " + unit::term_state_descr(u->state) + " "
+			+ (u->needed   () ? "n" : ".")
+			+ (u->masked   () ? "m" : ".")
+			+ (u->can_start() ? "u" : ".")
+			+ (u->can_stop () ? "d" : ".")
+		);
+
+	log::debug("start queue:");
+	for (auto& u : to_start)
+		log::debug(" - " + with_weak_ptr(u, string("?"), [](shared_ptr<unit> u){ return u->term_name(); }));
+
+	log::debug("stop queue:");
+	for (auto& u : to_stop)
+		log::debug(" - " + with_weak_ptr(u, string("?"), [](shared_ptr<unit> u){ return u->term_name(); }));
 }
 
 void depgraph::start_step(bool& changed) {
@@ -263,18 +288,20 @@ void depgraph::write_state(void) {
 	for (auto& [n, u] : units) {
 		o << "\t\"" << n << "\""
 			<< " ["
-				<< "label=\"" << n << endl << unit::state_descr(u->state) << "\""
-				<< ", style=\"" << (exists(unit::statedir / "masked" / n) ? "dashed" : exists(unit::statedir / "wanted" / n) ? "bold" : "solid") << "\""
+				<< "style=\"" << (u->masked() ? "dashed" : u->wanted() ? "bold" : "solid") << "\""
 				<< ", color=\"" << (u->ready() ? "green" : u->running() ? "blue" : "black") << "\""
 			<<"];" << endl;
 
 		for (auto& d : u->deps) {
 			auto d_ = d.lock();
-			if (d_) o << "\t\"" << n << "\" -> \"" << d_->name() << "\";" << endl;
+			if (d_ && exists(u->dir() / "deps" / d_->name()))
+				o << "\t\"" << n << "\" -> \"" << d_->name() << "\" [dir=\"back\", arrowtail=\"inv\"];" << endl;
 		}
+
 		for (auto& r : u->revdeps) {
 			auto r_ = r.lock();
-			if (r_) o << "\t\"" << r_->name() << "\" -> \"" << n << "\";" << endl;
+			if (r_ && exists(u->dir() / "revdeps" / r_->name()))
+				o << "\t\"" << r_->name() << "\" -> \"" << n << "\";" << endl;
 		}
 
 		auto rf = unit::statedir / "running" / u->name();

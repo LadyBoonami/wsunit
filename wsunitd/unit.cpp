@@ -17,7 +17,7 @@ path   unit::dir      (void) { return    confdir / name_            ; }
 bool   unit::running (void) { return state == IN_START || state == IN_RUN || state == UP || state == IN_STOP; }
 bool   unit::ready   (void) { return                                         state == UP                    ; }
 
-bool unit::needed(void) {
+bool unit::wanted(void) {
 	if (in_shutdown) {
 		if (name_ == "@shutdown") return true;
 	}
@@ -25,6 +25,12 @@ bool unit::needed(void) {
 		if (name_ == "@default") return true;
 		if (exists(statedir / "wanted" / name_)) return true;
 	}
+
+	return false;
+}
+
+bool unit::needed(void) {
+	if (wanted()) return true;
 
 	for (auto& p : revdeps)
 		if (with_weak_ptr(p, false, [](shared_ptr<unit> p){ return p->needed(); })) return true;
@@ -43,6 +49,11 @@ bool unit::masked(void) {
 }
 
 bool unit::can_start(void) {
+	if (in_shutdown && name_ == "@shutdown")
+		for (auto& [n, u] : depgraph::units)
+			if (u->running() && !u->needed())
+				return false;
+
 	for (auto& p : deps)
 		if (with_weak_ptr(p, false, [](shared_ptr<unit> p){ return !p->ready(); })) return false;
 

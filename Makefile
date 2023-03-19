@@ -7,7 +7,3 @@ wsunitd/wsunitd:
 .PHONY: clean
 clean:
 	cd wsunitd && make clean
-
-.PHONY: dot
-dot:
-	dot -Tx11 state/state.dot
