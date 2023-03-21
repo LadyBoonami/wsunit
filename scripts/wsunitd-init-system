@@ -1,6 +1,0 @@
-#!/bin/bash
-
-export WSUNIT_CONFIG="/etc/wsunit"
-export WSUNIT_STATE="/run/wsunit"
-
-exec wsunitd "$WSUNIT_CONFIG" "$WSUNIT_STATE"

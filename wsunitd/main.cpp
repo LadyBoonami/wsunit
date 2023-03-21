@@ -8,6 +8,23 @@
 
 
 
+path confdir ;
+path statedir;
+path logdir  ;
+bool in_shutdown;
+
+
+
+void mkdirs(void) {
+	if (!is_directory(confdir              )) create_directory(confdir              );
+	if (!is_directory(confdir / "@default" )) create_directory(confdir / "@default" );
+	if (!is_directory(confdir / "@shutdown")) create_directory(confdir / "@shutdown");
+	if (!is_directory(statedir             )) create_directory(statedir             );
+	if (!is_directory(statedir / "wanted"  )) create_directory(statedir / "wanted"  );
+	if (!is_directory(statedir / "masked"  )) create_directory(statedir / "masked"  );
+	if (!is_directory(statedir / "state"   )) create_directory(statedir / "state"   );
+}
+
 void signal_loop(void) {
 	sigset_t sigs;
 	assert(sigemptyset(&sigs) == 0);
@@ -54,14 +71,14 @@ void signal_loop(void) {
 
 			case SIGTERM:
 				log::note("received SIGTERM, shut down");
-				unit::in_shutdown = true;
+				in_shutdown = true;
 				try { depgraph::start_stop_units(); }
 				catch (exception& ex) { log::err(string("failed to start/stop units: ") + ex.what()); }
 			break;
 
 			case SIGINT:
 				log::note("received SIGINT, shut down");
-				unit::in_shutdown = true;
+				in_shutdown = true;
 				try { depgraph::start_stop_units(); }
 				catch (exception& ex) { log::err(string("failed to start/stop units: ") + ex.what()); }
 			break;
@@ -80,26 +97,34 @@ void waitall(void) {
 }
 
 int main(int argc, char** argv) {
-	if (argc != 3) {
-		cerr << "Usage: " << argv[0] << " <config dir> <state dir>" << endl;
+	char* tmp;
+
+	tmp = getenv("WSUNIT_VERBOSE");
+	log::verbose = tmp && *tmp;
+
+	tmp = getenv("WSUNIT_CONFIG_DIR");
+	if (!tmp) {
+		log::fatal("WSUNIT_CONFIG_DIR environment variable is not set");
 		return 1;
 	}
+	confdir = tmp;
 
-	log::verbose   = false;
-	unit::confdir  = argv[1];
-	unit::statedir = argv[2];
+	tmp = getenv("WSUNIT_STATE_DIR");
+	if (!tmp) {
+		log::fatal("WSUNIT_STATE_DIR environment variable is not set");
+		return 1;
+	}
+	statedir = tmp;
 
-	if (!is_directory(unit::confdir              )) create_directory(unit::confdir              );
-	if (!is_directory(unit::confdir / "@default" )) create_directory(unit::confdir / "@default" );
-	if (!is_directory(unit::confdir / "@shutdown")) create_directory(unit::confdir / "@shutdown");
-	if (!is_directory(unit::statedir             )) create_directory(unit::statedir             );
-	if (!is_directory(unit::statedir / "wanted"  )) create_directory(unit::statedir / "wanted"  );
-	if (!is_directory(unit::statedir / "masked"  )) create_directory(unit::statedir / "masked"  );
-	if (!is_directory(unit::statedir / "state"   )) create_directory(unit::statedir / "state"   );
-
-	ofstream(unit::statedir / "wsunitd.pid") << getpid() << endl;
+	tmp = getenv("WSUNIT_LOG_DIR");
+	if (!tmp) {
+		log::fatal("WSUNIT_LOG_DIR environment variable is not set");
+		return 1;
+	}
+	logdir = tmp;
 
 	depgraph::refresh();
+	ofstream(statedir / "wsunitd.pid") << getpid() << endl;
 	depgraph::start_stop_units();
 
 	signal_loop();

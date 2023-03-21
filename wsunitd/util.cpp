@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include <fcntl.h>
 #include <signal.h>
 
 
@@ -13,16 +14,62 @@ void log::warn (string s) {              cerr << "[ \x1b[33mwarning\x1b[0m ] " +
 void log::err  (string s) {              cerr << "[ \x1b[31merror\x1b[0m   ] " + s + "\n"; }
 void log::fatal(string s) {              cerr << "[ \x1b[41mfatal\x1b[0m   ] " + s + "\n"; }
 
-bool contains(const vector<weak_ptr<unit>>& v, const string& name) {
-	for (auto& d : v)
-		if (with_weak_ptr(d, false, [&name](shared_ptr<unit> u){ return name == u->name(); })) return true;
+pid_t fork_(void) {
+	pid_t pid = fork();
 
-	return false;
+	if (pid == 0) {
+		sigset_t sigs;
+		assert(sigemptyset(&sigs) == 0);
+		assert(sigaddset(&sigs, SIGUSR1) == 0);
+		assert(sigaddset(&sigs, SIGUSR2) == 0);
+		assert(sigaddset(&sigs, SIGCHLD) == 0);
+		assert(sigaddset(&sigs, SIGTERM) == 0);
+		assert(sigaddset(&sigs, SIGINT ) == 0);
+		assert(sigprocmask(SIG_UNBLOCK, &sigs, 0) == 0);
+	}
+
+	else if (pid < 0)
+		log::warn(string("could not fork: ") + strerror(errno));
+
+	return pid;
 }
 
-pid_t fork_exec(const path& p) {
-	log::debug("fork_exec " + p.string());
+void output_logfile(const string name) {
+	int fd = open((logdir / name).c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	if (fd == -1) {
+		log::err(string("could not open log file ") + (logdir / name).c_str() + ": " + strerror(errno));
+		exit(1);
+	}
+	if (dup2(fd, 1) == -1) {
+		log::err(string("could not set stdout to log file ") + (logdir / name).c_str() + ": " + strerror(errno));
+		exit(1);
+	}
+	if (dup2(fd, 2) == -1) {
+		log::err(string("could not set stderr to log file ") + (logdir / name).c_str() + ": " + strerror(errno));
+		exit(1);
+	}
+}
 
+bool status_ok(shared_ptr<unit> u, const string scriptname, int status) {
+	if (WIFEXITED(status)) {
+		if (WEXITSTATUS(status) == 0) {
+			log::note(u->term_name() + ": " + scriptname + " script exited with code " + to_string(WEXITSTATUS(status)));
+			return true;
+		}
+		else {
+			log::warn(u->term_name() + ": " + scriptname + " script exited with code " + to_string(WEXITSTATUS(status)));
+			return false;
+		}
+	}
+	else if (WIFSIGNALED(status)) {
+		log::warn(u->term_name() + ": " + scriptname + " script terminated by signal " + signal_string(WTERMSIG(status)));
+		return false;
+	}
+	assert(false);
+}
+
+/*
+pid_t fork_exec(const path& p, const string logname) {
 	pid_t pid = fork();
 
 	if (pid == 0) {
@@ -35,6 +82,22 @@ pid_t fork_exec(const path& p) {
 		assert(sigaddset(&sigs, SIGINT ) == 0);
 		assert(sigprocmask(SIG_UNBLOCK, &sigs, 0) == 0);
 
+		if (logname != "") {
+			int fd = open((logdir / logname).c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+			if (fd == -1) {
+				log::err(string("could not open log file ") + (logdir / logname).c_str() + ": " + strerror(errno));
+				exit(1);
+			}
+			if (dup2(fd, 1) == -1) {
+				log::err(string("could not set stdout to log file ") + (logdir / logname).c_str() + ": " + strerror(errno));
+				exit(1);
+			}
+			if (dup2(fd, 2) == -1) {
+				log::err(string("could not set stderr to log file ") + (logdir / logname).c_str() + ": " + strerror(errno));
+				exit(1);
+			}
+		}
+
 		execl(p.c_str(), p.c_str(), (char*) NULL);
 		log::warn("could not start " + p.string() + ": " + strerror(errno));
 		exit(1);
@@ -45,6 +108,7 @@ pid_t fork_exec(const path& p) {
 
 	return pid;
 }
+*/
 
 string signal_string(int signum) {
 	return string("SIG") + sigabbrev_np(signum) + " (" + to_string(signum) + ")";

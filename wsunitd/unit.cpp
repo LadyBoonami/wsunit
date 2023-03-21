@@ -6,7 +6,7 @@
 
 
 
-unit::unit(string name) : name_(name), state(DOWN), running_pid(0) {
+unit::unit(string name) : name_(name), state(DOWN), logrot_pid(0), start_pid(0), rdy_pid(0), run_pid(0), stop_pid(0) {
 	ofstream(statedir / "state" / name_) << "down" << endl;
 }
 
@@ -14,8 +14,8 @@ string unit::name     (void) { return              name_            ; }
 string unit::term_name(void) { return "\x1b[34m" + name_ + "\x1b[0m"; }
 path   unit::dir      (void) { return    confdir / name_            ; }
 
-bool   unit::running (void) { return state == IN_START || state == IN_RUN || state == UP || state == IN_STOP; }
-bool   unit::ready   (void) { return                                         state == UP                    ; }
+bool   unit::running (void) { return state != DOWN; }
+bool   unit::ready   (void) { return state == UP  ; }
 
 bool unit::wanted(void) {
 	if (in_shutdown) {
@@ -31,39 +31,24 @@ bool unit::wanted(void) {
 
 bool unit::needed(void) {
 	if (wanted()) return true;
-
-	for (auto& p : revdeps)
-		if (with_weak_ptr(p, false, [](shared_ptr<unit> p){ return p->needed(); })) return true;
-
+	for (auto& p : depgraph::get_revdeps(name_)) if (p->needed()) return true;
 	return false;
 }
 
 bool unit::masked(void) {
-	if (exists(statedir / "masked" / name_))
-		return true;
-
-	for (auto& p : deps)
-		if (with_weak_ptr(p, false, [](shared_ptr<unit> p){ return p->masked(); })) return true;
-
+	if (exists(statedir / "masked" / name_)) return true;
+	for (auto& p : depgraph::get_deps(name_)) if (p->masked()) return true;
 	return false;
 }
 
 bool unit::can_start(void) {
-	if (in_shutdown && name_ == "@shutdown")
-		for (auto& [n, u] : depgraph::units)
-			if (u->running() && !u->needed())
-				return false;
-
-	for (auto& p : deps)
-		if (with_weak_ptr(p, false, [](shared_ptr<unit> p){ return !p->ready(); })) return false;
-
+	if (need_settle() && !depgraph::is_settled()) return false;
+	for (auto& p : depgraph::get_deps(name_)) if (!p->ready()) return false;
 	return true;
 }
 
 bool unit::can_stop(void) {
-	for (auto& p : revdeps)
-		if (with_weak_ptr(p, false, [](shared_ptr<unit> p){ return p->running(); })) return false;
-
+	for (auto& p : depgraph::get_revdeps(name_)) if (p->running()) return false;
 	return true;
 }
 
@@ -71,46 +56,100 @@ bool unit::restart(void) {
 	return exists(dir() / "restart");
 }
 
-bool unit::has_start_script(void) { auto p = dir() / "start"; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_run_script  (void) { auto p = dir() / "run"  ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_stop_script (void) { auto p = dir() / "stop" ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::need_settle(void) {
+	return name_ == "@shutdown" || exists(dir() / "start-wait-settled");
+}
+
+bool unit::has_logrot_script(void) { auto p = dir() / "logrot"; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_start_script (void) { auto p = dir() / "start" ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_run_script   (void) { auto p = dir() / "run"   ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_rdy_script   (void) { auto p = dir() / "ready" ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_stop_script  (void) { auto p = dir() / "stop"  ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+
+enum unit::state_t unit::get_state(void) { return state; }
+
+#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+
+	string unit::state_descr(state_t state) {
+		if (state == UP  ) return "ready"  ;
+		if (state != DOWN) return "running";
+		                   return "down"   ;
+	}
+
+	string unit::term_state_descr(state_t state) {
+		if (state == UP  ) return "\x1b[32mready\x1b[0m"  ;
+		if (state != DOWN) return "\x1b[33mrunning\x1b[0m";
+		                   return "\x1b[31mdown\x1b[0m"   ;
+	}
+
+#pragma GCC diagnostic pop
 
 
-path unit::confdir ;
-path unit::statedir;
-bool unit::in_shutdown;
 
-
-string unit::state_descr(state_t state) {
-	switch (state) {
+bool unit::request_start(shared_ptr<unit> u, string* reason) {
+	switch (u->state) {
 		case DOWN:
-			return "down";
+			if (!u->can_start()) {
+				if (reason) *reason = "waiting for dependencies";
+				return false;
+			}
+			else {
+				if (reason) *reason = "now starting";
+				step_have_logrot(u);
+				return true;
+			}
 
+		case IN_LOGROT:
 		case IN_START:
-		case IN_RUN:
-		case IN_STOP:
-			return "running";
+		case IN_RDY:
+			if (reason) *reason = "already starting";
+			return true;
 
 		case UP:
-			return "ready";
+			if (reason) *reason = "already started";
+			return true;
+
+		case IN_RDY_ERR:
+		case IN_RUN:
+		case IN_STOP:
+			if (reason) *reason = "currently stopping";
+			return false;
 	}
 }
 
-string unit::term_state_descr(state_t state) {
-
-	switch (state) {
+bool unit::request_stop(shared_ptr<unit> u, string* reason) {
+	switch (u->state) {
 		case DOWN:
-			return "\x1b[31mdown\x1b[0m";
+			if (reason) *reason = "already stopped";
+			return true;
 
+		case IN_LOGROT:
 		case IN_START:
-		case IN_RUN:
-		case IN_STOP:
-			return "\x1b[33mrunning\x1b[0m";
+		case IN_RDY:
+			if (reason) *reason = "currently starting";
+			return false;
 
 		case UP:
-			return "\x1b[32mready\x1b[0m";
+			if (!u->can_stop()) {
+				if (reason) *reason = "waiting for reverse dependencies";
+				return false;
+			}
+			else {
+				if (reason) *reason = "now stopping";
+				step_active_run(u);
+				return true;
+			}
+
+		case IN_RDY_ERR:
+		case IN_RUN:
+		case IN_STOP:
+			if (reason) *reason = "already stopping";
+			return true;
 	}
 }
+
+
 
 void unit::set_state(state_t state) {
 	string old_state = state_descr(this->state);
@@ -124,176 +163,196 @@ void unit::set_state(state_t state) {
 	this->state = state;
 }
 
+void unit::step_have_logrot (shared_ptr<unit> u) { if (u->has_logrot_script()) fork_logrot_script(u); else step_have_start  (u); }
+void unit::step_have_start  (shared_ptr<unit> u) { if (u->has_start_script ()) fork_start_script (u); else step_have_run    (u); }
+void unit::step_have_run    (shared_ptr<unit> u) { if (u->has_run_script   ()) fork_run_script   (u); else step_have_rdy    (u); }
+void unit::step_have_rdy    (shared_ptr<unit> u) { if (u->has_rdy_script   ()) fork_rdy_script   (u); else u->set_state(UP)    ; }
+void unit::step_active_rdy  (shared_ptr<unit> u) { if (u->rdy_pid != 0       ) kill_rdy_script   (u); else step_have_stop   (u); }
+void unit::step_active_run  (shared_ptr<unit> u) { if (u->run_pid != 0       ) kill_run_script   (u); else step_have_stop   (u); }
+void unit::step_have_stop   (shared_ptr<unit> u) { if (u->has_stop_script  ()) fork_stop_script  (u); else step_have_restart(u); }
 
-void unit::start_step(shared_ptr<unit> u, bool& changed) {
-	switch (u->state) {
-		case DOWN:
-			if (!exec_start_script(u) && !exec_run_script(u))
-				u->set_state(UP);
+void unit::step_have_restart(shared_ptr<unit> u) { if (u->restart() && u->needed() && !u->masked()) step_have_logrot(u); else u->set_state(DOWN); }
 
-			changed = true;
-		break;
-
-		case IN_START:
-			if (!exec_run_script(u))
-				u->set_state(UP);
-
-			changed = true;
-		break;
-
-		case IN_RUN:
-			u->set_state(UP);
-			changed = true;
-		break;
-
-		case UP:
-		case IN_STOP:
-		break;
+void unit::fork_logrot_script(shared_ptr<unit> u) {
+	assert(u->has_logrot_script());
+	log::note(u->term_name() + ": exec logrotate script");
+	pid_t pid = fork_();
+	if (pid == 0) {
+		chdir(logdir.c_str());
+		execl((u->dir() / "logrotate").c_str(), (u->dir() / "logrotate").c_str(), u->name().c_str(), (char*) NULL);
+		exit(1);
+	}
+	else if (pid > 0) {
+		term_add(pid, on_logrot_exit, u);
+		u->logrot_pid = pid;
+		u->set_state(IN_LOGROT);
 	}
 }
 
-void unit::stop_step(shared_ptr<unit> u, bool& changed) {
-	switch (u->state) {
-		case DOWN:
-		case IN_START:
-		break;
-
-		case IN_RUN:
-			// TODO
-
-		case UP:
-			if (u->running_pid) {
-				log::debug(u->term_name() + ": kill(" + to_string(u->running_pid) + ", " + signal_string(SIGTERM) + ")");
-				kill(u->running_pid, SIGTERM);
-			}
-			else if (!exec_stop_script(u))
-				u->set_state(DOWN);
-
-			changed = true;
-		break;
-
-		case IN_STOP:
-			u->set_state(DOWN);
-			changed = true;
-		break;
-	}
-	if (u->state == DOWN && u->restart() && u->needed() && !u->masked()) {
-		log::note(u->term_name() + ": restart as requested");
-		depgraph::to_start.push_back(u);
-		changed = true;
-	}
-}
-
-
-bool unit::exec_start_script(shared_ptr<unit> u) {
-	if (!u->has_start_script()) return false;
+void unit::fork_start_script(shared_ptr<unit> u) {
+	assert(u->has_start_script());
 	log::note(u->term_name() + ": exec start script");
-	pid_t pid = fork_exec(u->dir() / "start");
-	if (pid > 0) {
+	pid_t pid = fork_();
+	if (pid == 0) {
+		chdir(u->dir().c_str());
+		output_logfile(u->name() + ".start");
+		execl((u->dir() / "start").c_str(), (u->dir() / "start").c_str(), (char*) NULL);
+		exit(1);
+	}
+	else if (pid > 0) {
 		term_add(pid, on_start_exit, u);
-		u->running_pid = pid;
+		u->start_pid = pid;
 		u->set_state(IN_START);
 	}
-	return true;
 }
 
-bool unit::exec_run_script(shared_ptr<unit> u) {
-	if (!u->has_run_script()) return false;
+void unit::fork_run_script(shared_ptr<unit> u) {
+	assert(u->has_run_script());
 	log::note(u->term_name() + ": exec run script");
-	pid_t pid = fork_exec(u->dir() / "run");
-	if (pid > 0) {
-		term_add(pid, on_run_exit, u);
-		// TODO: check handling
-		u->running_pid = pid;
-		u->set_state(UP);
+	pid_t pid = fork_();
+	if (pid == 0) {
+		chdir(u->dir().c_str());
+		output_logfile(u->name() + ".run");
+		execl((u->dir() / "run").c_str(), (u->dir() / "run").c_str(), (char*) NULL);
+		exit(1);
 	}
-	return true;
+	else if (pid > 0) {
+		term_add(pid, on_run_exit, u);
+		u->run_pid = pid;
+		step_have_rdy(u);
+	}
 }
 
-bool unit::exec_stop_script(shared_ptr<unit> u) {
-	if (!u->has_stop_script()) return false;
+void unit::fork_rdy_script(shared_ptr<unit> u) {
+	assert(u->has_rdy_script());
+	log::note(u->term_name() + ": exec ready script");
+	pid_t pid = fork_();
+	if (pid == 0) {
+		chdir(u->dir().c_str());
+		execl((u->dir() / "ready").c_str(), (u->dir() / "ready").c_str(), (char*) NULL);
+		exit(1);
+	}
+	else if (pid > 0) {
+		term_add(pid, on_rdy_exit, u);
+		u->rdy_pid = pid;
+		u->set_state(IN_RDY);
+	}
+}
+
+void unit::fork_stop_script(shared_ptr<unit> u) {
+	assert(u->has_stop_script());
 	log::note(u->term_name() + ": exec stop script");
-	pid_t pid = fork_exec(u->dir() / "stop");
-	if (pid > 0) {
+	pid_t pid = fork_();
+	if (pid == 0) {
+		chdir(u->dir().c_str());
+		output_logfile(u->name() + ".stop");
+		execl((u->dir() / "stop").c_str(), (u->dir() / "stop").c_str(), (char*) NULL);
+		exit(1);
+	}
+	else if (pid > 0) {
 		term_add(pid, on_stop_exit, u);
-		u->running_pid = pid;
+		u->stop_pid = pid;
 		u->set_state(IN_STOP);
 	}
-	return true;
 }
 
+void unit::kill_rdy_script(shared_ptr<unit> u) {
+	assert(u->rdy_pid);
+	log::debug(u->term_name() + ": kill(" + to_string(u->rdy_pid) + ", " + signal_string(SIGTERM) + ")");
+	kill(u->rdy_pid, SIGTERM);
+	u->set_state(IN_RDY_ERR);
+}
 
-void unit::on_start_exit(pid_t pid, shared_ptr<unit> u, int status) {
-	u->running_pid = 0;
+void unit::kill_run_script(shared_ptr<unit> u) {
+	assert(u->run_pid);
+	log::debug(u->term_name() + ": kill(" + to_string(u->run_pid) + ", " + signal_string(SIGTERM) + ")");
+	kill(u->run_pid, SIGTERM);
+	u->set_state(IN_RUN);
+}
 
-	bool _;
+#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wunused-parameter"
 
-	if (WIFEXITED(status)) {
-		if (WEXITSTATUS(status) == 0) {
-			log::note(u->term_name() + ": start script exited with code " + to_string(WEXITSTATUS(status)));
-			start_step(u, _);
-		}
-		else {
-			log::warn(u->term_name() + ": start script exited with code " + to_string(WEXITSTATUS(status)));
+	void unit::on_logrot_exit(pid_t pid, shared_ptr<unit> u, int status) {
+		assert(u->state == IN_LOGROT);
+
+		u->logrot_pid = 0;
+
+		if (status_ok(u, "logrotate", status))
+			step_have_start(u);
+		else
 			u->set_state(DOWN);
+
+		depgraph::queue_step();
+	}
+
+	void unit::on_start_exit(pid_t pid, shared_ptr<unit> u, int status) {
+		assert(u->state == IN_START);
+
+		u->start_pid = 0;
+
+		if (status_ok(u, "start", status))
+			step_have_run(u);
+		else
+			u->set_state(DOWN);
+
+		depgraph::queue_step();
+	}
+
+	void unit::on_rdy_exit(pid_t pid, shared_ptr<unit> u, int status) {
+		u->rdy_pid = 0;
+
+		switch (u->state) {
+			case IN_RDY:
+				if (status_ok(u, "ready", status))
+					u->set_state(UP);
+				else
+					step_active_run(u);
+			break;
+
+			case IN_RDY_ERR:
+				status_ok(u, "ready", status);
+				step_have_stop(u);
+			break;
+
+			default:
+				assert(false);
 		}
-	}
-	else if (WIFSIGNALED(status)) {
-		log::warn(u->term_name() + ": start script terminated by signal " + signal_string(WTERMSIG(status)));
-	}
-	else {
-		log::warn(u->term_name() + ": start script in unexpected state");
-		term_add(pid, on_start_exit, u);
+
+		depgraph::queue_step();
 	}
 
-	depgraph::queue_step();
-}
+	void unit::on_run_exit(pid_t pid, shared_ptr<unit> u, int status) {
+		u->run_pid = 0;
 
-void unit::on_run_exit(pid_t pid, shared_ptr<unit> u, int status) {
-	u->running_pid = 0;
+		switch (u->state) {
+			case IN_RDY:
+				status_ok(u, "run", status);
+				step_active_rdy(u);
+			break;
 
-	bool _;
+			case UP:
+			case IN_RUN:
+				status_ok(u, "run", status);
+				step_have_stop(u);
+			break;
 
-	if (WIFEXITED(status)) {
-		if (WEXITSTATUS(status) == 0)
-			log::note(u->term_name() + ": run script exited with code " + to_string(WEXITSTATUS(status)));
-		else
-			log::warn(u->term_name() + ": run script exited with code " + to_string(WEXITSTATUS(status)));
+			default:
+				assert(false);
+		}
 
-		stop_step(u, _);
-	}
-	else if (WIFSIGNALED(status)) {
-		log::warn(u->term_name() + ": run script terminated by signal " + signal_string(WTERMSIG(status)));
-		stop_step(u, _);
-	}
-	else {
-		log::warn(u->term_name() + ": start script in unexpected state");
-		term_add(pid, on_run_exit, u);
+		depgraph::queue_step();
 	}
 
-	depgraph::queue_step();
-}
+	void unit::on_stop_exit(pid_t pid, shared_ptr<unit> u, int status) {
+		assert(u->state == IN_STOP);
 
-void unit::on_stop_exit(pid_t pid, shared_ptr<unit> u, int status) {
-	u->running_pid = 0;
+		u->stop_pid = 0;
 
-	bool _;
+		status_ok(u, "stop", status);
+		step_have_restart(u);
 
-	if (WIFEXITED(status)) {
-		if (WEXITSTATUS(status) == 0)
-			log::note(u->term_name() + ": stop script exited with code " + to_string(WEXITSTATUS(status)));
-		else
-			log::warn(u->term_name() + ": stop script exited with code " + to_string(WEXITSTATUS(status)));
-
-		stop_step(u, _);
-	}
-	else if (WIFSIGNALED(status)) {
-		log::warn(u->term_name() + ": stop script terminated by signal" + signal_string(WTERMSIG(status)));
-	}
-	else {
-		log::warn(u->term_name() + ": stop script in unexpected state");
-		term_add(pid, on_stop_exit, u);
+		depgraph::queue_step();
 	}
 
-	depgraph::queue_step();
-}
+#pragma GCC diagnostic pop

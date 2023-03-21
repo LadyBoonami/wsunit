@@ -1,0 +1,6 @@
+#!/bin/bash
+
+export WSUNIT_CONFIG_DIR="/etc/wsunit"
+export WSUNIT_STATE_DIR="/run/wsunit"
+export WSUNIT_LOG_DIR="/var/log/wsunit"
+exec wsunitd

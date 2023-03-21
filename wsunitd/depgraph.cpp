@@ -5,6 +5,7 @@
 
 
 void depgraph::refresh(void) {
+	mkdirs();
 	del_old_units();
 	add_new_units();
 	del_old_deps ();
@@ -12,9 +13,9 @@ void depgraph::refresh(void) {
 }
 
 void depgraph::start_stop_units(void) {
-	for (auto& [n, u] : units)
-		if (u->needed() && !u->masked()) start(u);
-		else                             stop (u);
+	for (auto& [n, np] : nodes)
+		if (np->u->needed() && !np->u->masked()) start(np->u);
+		else                                     stop (np->u);
 }
 
 void depgraph::start(shared_ptr<unit> u) {
@@ -30,61 +31,102 @@ void depgraph::stop (shared_ptr<unit> u) {
 }
 
 
-map<string, shared_ptr<unit>> depgraph::units;
+bool depgraph::contains(const vector<weak_ptr<node>>& v, const string& name) {
+	for (auto& d : v)
+		if (with_weak_ptr(d, false, [&name](shared_ptr<node> np){ return name == np->u->name(); })) return true;
+
+	return false;
+}
+
+map<string, shared_ptr<depgraph::node>> depgraph::nodes;
+
+vector<shared_ptr<unit>> depgraph::get_deps(string name) {
+	try {
+		auto& n = nodes.at(name);
+		vector<shared_ptr<unit>> ret;
+		for (auto& w : n->deps) { auto p = w.lock(); if (p) ret.push_back(p->u); }
+		return ret;
+	}
+	catch (exception& ex) {
+		return vector<shared_ptr<unit>>();
+	}
+}
+
+vector<shared_ptr<unit>> depgraph::get_revdeps(string name) {
+	try {
+		auto& n = nodes.at(name);
+		vector<shared_ptr<unit>> ret;
+		for (auto& w : n->revdeps) { auto p = w.lock(); if (p) ret.push_back(p->u); }
+		return ret;
+	}
+	catch (exception& ex) {
+		return vector<shared_ptr<unit>>();
+	}
+}
 
 void depgraph::del_old_units(void) {
-	auto it = units.begin();
-
-	while (it != units.end())
-		if (is_directory(unit::confdir / it->first))
+	auto it = nodes.begin();
+	while (it != nodes.end())
+		if (is_directory(confdir / it->first))
 			++it;
 
-		else if (it->second->running()) {
+		else if (it->second->u->running()) {
 			// remove all links to the graph, unit will be safely stopped as it is no longer needed(), and then remain
 			// idle in the graph until the next refresh
+			// TODO: what if wanted()?
 
-			log::debug("unlink old unit " + it->second->term_name() + " from depgraph");
+			log::debug("unlink old unit " + it->second->u->term_name() + " from depgraph");
 			it->second->deps.clear();
 			it->second->revdeps.clear();
 		}
 		else {
-			log::debug("remove old unit " + it->second->term_name() + " from depgraph");
-			it = units.erase(it);
+			log::debug("remove old unit " + it->second->u->term_name() + " from depgraph");
+			it = nodes.erase(it);
 		}
 }
 
 void depgraph::add_new_units(void) {
-	for (directory_entry& d : directory_iterator(unit::confdir)) {
+	for (directory_entry& d : directory_iterator(confdir)) {
 		string n = d.path().filename().string();
-		if (units.count(n) == 0) {
+		if (nodes.count(n) == 0) {
 			log::debug("add new unit " + n + " to depgraph");
-			units.emplace(n, shared_ptr<unit>(new unit(n)));
+			nodes.emplace(n, make_shared<depgraph::node>(make_shared<unit>(n)));
 		}
 	}
 }
 
 void depgraph::del_old_deps(void) {
-	for (auto& [n, u] : units) {
+	for (auto& [n, np] : nodes) {
 		{
-			auto it = u->deps.begin();
-			while (it != u->deps.end()) {
-				auto du = it->lock();
-				if (du && is_directory(du->dir()) && (exists(u->dir() / "deps" / du->name()) || exists(du->dir() / "revdeps" / u->name()))) ++it;
+			auto it = np->deps.begin();
+			while (it != np->deps.end()) {
+				auto dep = it->lock();
+				if (
+					dep &&
+					is_directory(dep->u->dir()) &&
+					(exists(np->u->dir() / "deps" / dep->u->name()) || exists(dep->u->dir() / "revdeps" / np->u->name()))
+				) ++it;
+
 				else {
-					log::debug("remove old dep " + n + " -> " + du->name() + " from depgraph");
-					it = u->deps.erase(it);
+					log::debug("remove old dep " + n + " -> " + dep->u->name() + " from depgraph");
+					it = np->deps.erase(it);
 				}
 			}
 		}
 
 		{
-			auto it = u->revdeps.begin();
-			while (it != u->revdeps.end()) {
-				auto ru = it->lock();
-				if (ru && is_directory(ru->dir()) && (exists(ru->dir() / "deps" / u->name()) || exists(u->dir() / "revdeps" / ru->name()))) ++it;
+			auto it = np->revdeps.begin();
+			while (it != np->revdeps.end()) {
+				auto revdep = it->lock();
+				if (
+					revdep &&
+					is_directory(revdep->u->dir()) &&
+					(exists(revdep->u->dir() / "deps" / np->u->name()) || exists(np->u->dir() / "revdeps" / revdep->u->name()))
+				) ++it;
+
 				else {
-					log::debug("remove old revdep " + ru->name() + " <- " + n + " from depgraph");
-					it = u->deps.erase(it);
+					log::debug("remove old revdep " + revdep->u->name() + " <- " + n + " from depgraph");
+					it = np->deps.erase(it);
 				}
 			}
 		}
@@ -92,37 +134,37 @@ void depgraph::del_old_deps(void) {
 }
 
 void depgraph::add_new_deps(void) {
-	for (auto& [n, u] : units) {
-		path up = u->dir();
-		path dp = up / "deps";
-		path rp = up / "revdeps";
+	for (auto& [n, np] : nodes) {
+		path npath = np->u->dir();
+		path dpath = npath / "deps";
+		path rpath = npath / "revdeps";
 
-		if (is_directory(dp))
-			for (directory_entry& d : directory_iterator(dp))
+		if (is_directory(dpath))
+			for (directory_entry& d : directory_iterator(dpath))
 				adddep(d.path().filename().string(), n);
 
-		if (is_directory(rp))
-			for (directory_entry& r : directory_iterator(rp))
+		if (is_directory(rpath))
+			for (directory_entry& r : directory_iterator(rpath))
 				adddep(n, r.path().filename().string());
 	}
 }
 
 void depgraph::adddep(string fst, string snd) {
-	if (units.count(fst) == 0) {
+	if (nodes.count(fst) == 0) {
 		log::warn("could not add dependency between " + fst + " and " + snd + ": unit " + fst + " not found, ignoring...");
 		return;
 	}
 
-	if (units.count(snd) == 0) {
+	if (nodes.count(snd) == 0) {
 		log::warn("could not add dependency between " + fst + " and " + snd + ": unit " + snd + " not found, ignoring...");
 		return;
 	}
 
-	shared_ptr<unit> a = units.at(fst);
-	shared_ptr<unit> b = units.at(snd);
+	shared_ptr<node> a = nodes.at(fst);
+	shared_ptr<node> b = nodes.at(snd);
 
-	if (!contains(a->revdeps, b->name())) { log::debug("add revdep " + snd + " <- " + fst + " to depgraph"); a->revdeps.emplace_back(b); }
-	if (!contains(b->   deps, a->name())) { log::debug("add dep "    + fst + " -> " + snd + " to depgraph"); b->   deps.emplace_back(a); }
+	if (!contains(a->revdeps, b->u->name())) { log::debug("add revdep " + snd + " <- " + fst + " to depgraph"); a->revdeps.emplace_back(b); }
+	if (!contains(b->   deps, a->u->name())) { log::debug("add dep "    + fst + " -> " + snd + " to depgraph"); b->   deps.emplace_back(a); }
 }
 
 deque<weak_ptr<unit>> depgraph::to_start;
@@ -139,28 +181,34 @@ void depgraph::queue_step(void) {
 		else         log::debug("no global state change, done processing queues");
 	} while (changed);
 
-	if (unit::in_shutdown) {
-		for (auto& [n, u] : units)
-			if (!u->needed() && u->running()) {
-				log::debug("shutdown: waiting for " + u->term_name());
+	if (in_shutdown) {
+		for (auto& [n, np] : nodes)
+			if (!np->u->needed() && np->u->running()) {
+				log::debug("shutdown: waiting for " + np->u->term_name());
 				return;
 			}
 
-		if (units.count("@shutdown") > 0 && !units.at("@shutdown")->ready())
+		if (nodes.count("@shutdown") > 0 && !nodes.at("@shutdown")->u->ready())
 			return;
 
 		exit(0);
 	}
 }
 
+bool depgraph::is_settled(void) {
+	for (auto& [n, np] : nodes) if (np->u->running() && ! np->u->needed()) return false;
+	return true;
+}
+
 void depgraph::report(void) {
 	log::debug("current state:");
-	for (auto& [n, u] : units)
-		log::debug(" - " + u->term_name() + " " + unit::term_state_descr(u->state) + " "
-			+ (u->needed   () ? "n" : ".")
-			+ (u->masked   () ? "m" : ".")
-			+ (u->can_start() ? "u" : ".")
-			+ (u->can_stop () ? "d" : ".")
+	for (auto& [n, np] : nodes)
+		log::debug(" - " + np->u->term_name() + " " + unit::term_state_descr(np->u->get_state()) + " "
+			+ (np->u->needed   () ? "N" : "n")
+			+ (np->u->wanted   () ? "W" : "w")
+			+ (np->u->masked   () ? "M" : "m")
+			+ (np->u->can_start() ? "U" : "u")
+			+ (np->u->can_stop () ? "D" : "d")
 		);
 
 	log::debug("start queue:");
@@ -182,46 +230,19 @@ void depgraph::start_step(bool& changed) {
 		auto u = it->lock();
 		string reason = "?";
 
-		if (!u) {
+		if (u) {
+			if (!unit::request_start(u, &reason)) {
+				log::debug("keep unit " + (u ? u->name() : string("?")) + " in start queue: " + reason);
+				++it;
+				continue;
+			}
+		}
+		else
 			reason = "stale unit";
-			goto drop;
-		}
 
-		switch (u->state) {
-			case unit::IN_START:
-			case unit::IN_RUN:
-				reason = "already starting";
-				goto drop;
-
-			case unit::UP:
-				reason = "already started";
-				goto drop;
-
-			case unit::IN_STOP:
-				reason = "currently stopping";
-				goto keep;
-
-			case unit::DOWN:
-			break;
-		}
-
-		if (!u->can_start()) {
-			reason = "waiting for dependencies to be ready";
-			goto keep;
-		}
-
-		unit::start_step(u, changed);
-		reason = "now starting";
-		goto drop;
-
-	drop:
 		log::debug("drop unit " + (u ? u->name() : string("?")) + " from start queue: " + reason);
 		it = to_start.erase(it);
-		continue;
-
-	keep:
-		log::debug("keep unit " + (u ? u->name() : string("?")) + " in start queue: " + reason);
-		++it;
+		changed = true;
 		continue;
 	}
 }
@@ -236,46 +257,19 @@ void depgraph::stop_step(bool& changed) {
 		auto u = it->lock();
 		string reason = "?";
 
-		if (!u) {
+		if (u) {
+			if (!unit::request_stop(u, &reason)) {
+				log::debug("keep unit " + (u ? u->name() : string("?")) + " in stop queue: " + reason);
+				++it;
+				continue;
+			}
+		}
+		else
 			reason = "stale unit";
-			goto drop;
-		}
 
-		switch (u->state) {
-			case unit::IN_START:
-			case unit::IN_RUN:
-				reason = "currently starting";
-				goto keep;
-
-			case unit::UP:
-			break;
-
-			case unit::IN_STOP:
-				reason = "already stopping";
-				goto drop;
-
-			case unit::DOWN:
-				reason = "already stopped";
-				goto drop;
-		}
-
-		if (!u->can_stop()) {
-			reason = "waiting for reverse dependencies to go down";
-			goto keep;
-		}
-
-		unit::stop_step(u, changed);
-		reason = "now stopping";
-		goto drop;
-
-	drop:
 		log::debug("drop unit " + (u ? u->name() : string("?")) + " from stop queue: " + reason);
 		it = to_stop.erase(it);
-		continue;
-
-	keep:
-		log::debug("keep unit " + (u ? u->name() : string("?")) + " in stop queue: " + reason);
-		++it;
+		changed = true;
 		continue;
 	}
 }
@@ -283,39 +277,17 @@ void depgraph::stop_step(bool& changed) {
 void depgraph::write_state(void) {
 	log::debug("update state files");
 
-	ofstream o(unit::statedir / "state.dot");
-	o << "digraph {" << endl;
-	for (auto& [n, u] : units) {
-		o << "\t\"" << n << "\""
-			<< " ["
-				<< "style=\"" << (u->masked() ? "dashed" : u->wanted() ? "bold" : "solid") << "\""
-				<< ", color=\"" << (u->ready() ? "green" : u->running() ? "blue" : "black") << "\""
-			<<"];" << endl;
+	for (auto& [n, np] : nodes) {
+		auto rf = statedir / "running" / np->u->name();
 
-		for (auto& d : u->deps) {
-			auto d_ = d.lock();
-			if (d_ && exists(u->dir() / "deps" / d_->name()))
-				o << "\t\"" << n << "\" -> \"" << d_->name() << "\" [dir=\"back\", arrowtail=\"inv\"];" << endl;
-		}
+		if ( np->u->running() && !is_regular_file(rf)) ofstream(rf).flush();
+		if (!np->u->running() &&  is_regular_file(rf)) remove(rf);
 
-		for (auto& r : u->revdeps) {
-			auto r_ = r.lock();
-			if (r_ && exists(u->dir() / "revdeps" / r_->name()))
-				o << "\t\"" << r_->name() << "\" -> \"" << n << "\";" << endl;
-		}
+		rf = statedir / "ready" / np->u->name();
 
-		auto rf = unit::statedir / "running" / u->name();
-
-		if (u->state != unit::DOWN && !is_regular_file(rf)) ofstream(rf).flush();
-		if (u->state == unit::DOWN &&  is_regular_file(rf)) remove(rf);
-
-		rf = unit::statedir / "ready" / u->name();
-
-		if (u->state == unit::UP && !is_regular_file(rf)) ofstream(rf).flush();
-		if (u->state != unit::UP &&  is_regular_file(rf)) remove(rf);
+		if ( np->u->ready() && !is_regular_file(rf)) ofstream(rf).flush();
+		if (!np->u->ready() &&  is_regular_file(rf)) remove(rf);
 
 		// TODO: pid file?
 	}
-	o << "}" << endl;
-	o.close();
 }

@@ -1,0 +1,106 @@
+digraph {
+
+	node [shape="box"];
+
+	DOWN [style="bold"];
+	IN_LOGROT;
+	IN_START;
+	IN_RDY;
+	UP [style="bold"];
+	IN_RDY_ERR;
+	IN_RUN;
+	IN_STOP;
+
+
+	node [shape="diamond"];
+
+	check_logrot [label="have ./logrotate script?"];
+	check_start [label="have ./start script?"];
+	check_run [label="have ./run script?"];
+	check_rdy [label="have ./ready script?"];
+	check_rdy_running [label="./ready running?"];
+	check_run_running [label="./run running?"];
+	check_stop [label="have ./stop script?"];
+	check_restart [label="have ./restart file and needed and not masked?"];
+
+
+	node [shape="ellipse"];
+
+	start_logrot [label="fork ./logrotate"];
+	start_start [label="fork ./start"];
+	start_run [label="fork ./run"];
+	start_rdy [label="fork ./ready"];
+	kill_rdy [label="kill ./ready"];
+	kill_run [label="kill ./run"];
+	start_stop [label="fork ./stop"];
+
+
+	edge [style="dashed"];
+
+	DOWN:se -> check_logrot:n [label="start request"];
+	DOWN:nw -> DOWN:ne [label="stop request"];
+
+	IN_LOGROT:s -> check_start [label="./logrotate exit ok"];
+	IN_LOGROT:w -> DOWN [label="./logrotate exit error"];
+	IN_LOGROT:se -> IN_LOGROT:e [label="start/stop request"];
+
+	IN_START:s -> check_run [label="./start exit ok"];
+	IN_START:w -> DOWN [label="./start exit error"];
+	IN_START:se -> IN_START:e [label="start/stop request"];
+
+	IN_RDY:s -> UP [label="./ready exit ok"];
+	IN_RDY:s -> check_run_running [label="./ready exit error"];
+	IN_RDY:sw -> check_rdy_running [label="./run exit"];
+	IN_RDY:se -> IN_RDY:e [label="start/stop request"];
+
+	UP:s -> check_stop [label="./run exit"];
+	UP:se -> UP:e [label="start request"];
+	UP:sw -> check_run_running [label="stop request"];
+
+	IN_RUN:s -> check_stop [label="./run exit"];
+	IN_RUN:se -> IN_RUN:e [label="start/stop request"];
+
+	IN_RDY_ERR:s -> check_stop [label="./ready exit"];
+	IN_RDY_ERR:sw -> IN_RDY_ERR:w [label="start/stop request"];
+
+	IN_STOP:s -> check_restart [label="./stop exit"];
+	IN_STOP:sw -> IN_STOP:w [label="start/stop request"];
+
+
+	edge [style="solid"];
+
+	check_logrot:sw -> start_logrot [label="yes"];
+	check_logrot:se -> check_start [label="no"];
+
+	check_start:sw -> start_start [label="yes"];
+	check_start:se -> check_run [label="no"];
+
+	check_run:sw -> start_run [label="yes"];
+	check_run:se -> check_rdy [label="no"];
+
+	check_rdy:sw -> start_rdy [label="yes"];
+	check_rdy:se -> UP [label="no"];
+
+	check_rdy_running:sw -> kill_rdy [label="yes"];
+	check_rdy_running:se -> check_stop [label="no"];
+
+	check_run_running:sw -> kill_run [label="yes"];
+	check_run_running:se -> check_stop [label="no"];
+
+	check_stop:sw -> start_stop [label="yes"];
+	check_stop:se -> check_restart [label="no"];
+
+	check_restart:sw -> check_logrot:ne [label="yes"];
+	check_restart:se -> DOWN [label="no"];
+
+
+	edge [style="solid"];
+
+	start_logrot:s -> IN_LOGROT;
+	start_start:s -> IN_START;
+	start_run:s -> check_rdy;
+	start_rdy:s -> IN_RDY;
+	kill_rdy:s -> IN_RDY_ERR;
+	kill_run:s -> IN_RUN;
+	start_stop:s -> IN_STOP;
+}

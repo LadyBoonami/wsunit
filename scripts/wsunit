@@ -3,77 +3,100 @@
 #TODO: test config, state
 
 function unittest() {
-	if [ ! -e "$WSUNIT_CONFIG/$1" ]; then
+	if [ ! -e "$WSUNIT_CONFIG_DIR/$1" ]; then
 		echo "error: $1: unit not found" >&2
 		exit 1
 	fi
 }
 
+function bump() {
+	pkill -F "$WSUNIT_STATE_DIR/wsunitd.pid" -USR1
+}
+
+function waitstate() {
+	while [ "$(cat "$WSUNIT_STATE_DIR/state/$1")" != "$2" ]; do
+		inotifywait --quiet --quiet --timeout 3 "$WSUNIT_STATE_DIR/state/$1"
+	done
+}
+
 case "$1" in
 	status)
-		( cd "$WSUNIT_STATE/state" && grep -H "" * )
+		( cd "$WSUNIT_STATE_DIR/state" && grep -H "" * )
 	;;
 
 	graph)
-		exec dot -Tx11 "$WSUNIT_STATE/state.dot"
+		exec dot -Tx11 "$WSUNIT_STATE_DIR/state.dot"
 	;;
 
 	shutdown)
-		pkill -F "$WSUNIT_STATE/wsunitd.pid" -TERM
+		pkill -F "$WSUNIT_STATE_DIR/wsunitd.pid" -TERM
 	;;
 
 	bump)
-		pkill -F "$WSUNIT_STATE/wsunitd.pid" -USR1
+		bump
 	;;
 
 	refresh)
-		pkill -F "$WSUNIT_STATE/wsunitd.pid" -USR2
+		pkill -F "$WSUNIT_STATE_DIR/wsunitd.pid" -USR2
 	;;
 
 	"+w")
 		unittest "$2"
-		touch "$WSUNIT_STATE/wanted/$2"
+		touch "$WSUNIT_STATE_DIR/wanted/$2"
 	;;
 
 	"-w")
 		unittest "$2"
-		rm "$WSUNIT_STATE/wanted/$2" 2>/dev/null || true
+		rm "$WSUNIT_STATE_DIR/wanted/$2" 2>/dev/null || true
 	;;
 
 	"+m")
 		unittest "$2"
-		touch "$WSUNIT_STATE/masked/$2"
+		touch "$WSUNIT_STATE_DIR/masked/$2"
 	;;
 
 	"-m")
 		unittest "$2"
-		rm "$WSUNIT_STATE/masked/$2" 2>/dev/null || true
+		rm "$WSUNIT_STATE_DIR/masked/$2" 2>/dev/null || true
 	;;
 
 	"+d")
 		unittest "$2"
 		unittest "$3"
-		mkdir -p "$WSUNIT_CONFIG/$2/deps"
-		touch "$WSUNIT_CONFIG/$2/deps/$3"
+		mkdir -p "$WSUNIT_CONFIG_DIR/$2/deps"
+		touch "$WSUNIT_CONFIG_DIR/$2/deps/$3"
 	;;
 
 	"-d")
 		unittest "$2"
 		unittest "$3"
-		rm "$WSUNIT_CONFIG/$2/deps/$3" 2>/dev/null || true
+		rm "$WSUNIT_CONFIG_DIR/$2/deps/$3" 2>/dev/null || true
 	;;
 
 	"+r")
 		unittest "$2"
 		unittest "$3"
-		mkdir -p "$WSUNIT_CONFIG/$2/revdeps"
-		touch "$WSUNIT_CONFIG/$2/revdeps/$3"
+		mkdir -p "$WSUNIT_CONFIG_DIR/$2/revdeps"
+		touch "$WSUNIT_CONFIG_DIR/$2/revdeps/$3"
 	;;
 
 	"-r")
 		unittest "$2"
 		unittest "$3"
-		rm "$WSUNIT_CONFIG/$2/revdeps/$3" 2>/dev/null || true
+		rm "$WSUNIT_CONFIG_DIR/$2/revdeps/$3" 2>/dev/null || true
+	;;
+
+	"restart")
+		unittest "$2"
+
+		touch "$WSUNIT_STATE_DIR/masked/$2"
+		bump
+		waitstate "$2" "down"
+
+		rm "$WSUNIT_STATE_DIR/masked/$2"
+		bump
+		waitstate "$2" "up"
+		# TODO: what if service not needed?
 	;;
 
 	*)
