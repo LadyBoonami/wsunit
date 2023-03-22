@@ -1,5 +1,21 @@
 #!/bin/bash
 
+dbus=
+
+while [ -n "$1" ]; do
+	case "$1" in
+		"--dbus")
+			dbus=1
+		;;
+
+		*)
+			echo "unrecognized parameter: $1" >&2
+			exit 1
+		;;
+	esac
+	shift
+done
+
 if [ -n "$XDG_RUNTIME_DIR" ]; then
 	export XDG_RUNTIME_DIR="/tmp/$(id -u).runtime"
 	mkdir -p "$XDG_RUNTIME_DIR" || exit 1
@@ -10,4 +26,9 @@ fi
 export WSUNIT_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/wsunit"
 export WSUNIT_STATE_DIR="$XDG_RUNTIME_DIR/wsunit"
 export WSUNIT_LOG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/wsunit"
-exec wsunitd
+
+if [ -n "$dbus" ]; then
+	exec dbus-run-session -- wsunitd
+else
+	exec wsunitd
+fi

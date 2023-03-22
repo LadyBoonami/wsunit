@@ -30,6 +30,7 @@ class unit {
 		bool wanted     (void);
 		bool needed     (void);
 		bool masked     (void);
+		bool blocked    (void);
 		bool can_start  (void);
 		bool can_stop   (void);
 		bool restart    (void);
@@ -121,8 +122,12 @@ class depgraph {
 		static void add_new_units(void);
 		static void del_old_deps (void);
 		static void add_new_deps (void);
+		static void verify_deps  (void);
+
+		static void visit(const string& name, map<string, bool>& visited, deque<string>& trail);
 
 		static void adddep(string fst, string snd);
+		static void rmdep (string fst, string snd);
 
 
 		static deque<weak_ptr<unit>> to_start;

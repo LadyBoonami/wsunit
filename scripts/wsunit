@@ -25,7 +25,23 @@ case "$1" in
 	;;
 
 	graph)
-		exec dot -Tx11 "$WSUNIT_STATE_DIR/state.dot"
+		(
+			cd "$WSUNIT_CONFIG_DIR"
+			echo "digraph {"
+			for d in *; do
+				state="$(cat "$WSUNIT_STATE_DIR/state/$d")"
+				case "$state" in
+					down)    color=red    ;;
+					running) color=yellow ;;
+					ready)   color=green  ;;
+				esac
+
+				echo "\"$d\" [color=\"$color\"];"
+				find "$d/deps" -type f -printf "\"$d\" -> \"%f\" [direction=\"reverse\", arrowtail=\"rev\"];\\n" 2>/dev/null
+				find "$d/revdeps" -type f -printf "\"%f\" -> \"$d\" [];\\n" 2>/dev/null
+			done
+			echo "}"
+		) | dot -Tx11
 	;;
 
 	shutdown)
@@ -95,8 +111,12 @@ case "$1" in
 
 		rm "$WSUNIT_STATE_DIR/masked/$2"
 		bump
-		waitstate "$2" "up"
+		waitstate "$2" "ready"
 		# TODO: what if service not needed?
+	;;
+
+	"logs")
+		tail -f "$WSUNIT_LOG_DIR/$2."*
 	;;
 
 	*)

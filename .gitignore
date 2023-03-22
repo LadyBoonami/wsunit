@@ -1,4 +1,6 @@
 wsunitd/wsunitd
+cronexec/cronexec
 config/
 state/
 *.o
+README.html

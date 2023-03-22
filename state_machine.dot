@@ -1,6 +1,6 @@
 digraph {
 
-	node [shape="box"];
+	node [shape="ellipse"];
 
 	DOWN [style="bold"];
 	IN_LOGROT;
@@ -21,10 +21,10 @@ digraph {
 	check_rdy_running [label="./ready running?"];
 	check_run_running [label="./run running?"];
 	check_stop [label="have ./stop script?"];
-	check_restart [label="have ./restart file and needed and not masked?"];
+	check_restart [label="have ./restart file and needed and not blocked?"];
 
 
-	node [shape="ellipse"];
+	node [shape="box"];
 
 	start_logrot [label="fork ./logrotate"];
 	start_start [label="fork ./start"];

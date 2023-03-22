@@ -36,8 +36,12 @@ bool unit::needed(void) {
 }
 
 bool unit::masked(void) {
-	if (exists(statedir / "masked" / name_)) return true;
-	for (auto& p : depgraph::get_deps(name_)) if (p->masked()) return true;
+	return exists(statedir / "masked" / name_);
+}
+
+bool unit::blocked(void) {
+	if (masked()) return true;
+	for (auto& p : depgraph::get_deps(name_)) if (p->blocked()) return true;
 	return false;
 }
 
@@ -53,7 +57,9 @@ bool unit::can_stop(void) {
 }
 
 bool unit::restart(void) {
-	return exists(dir() / "restart");
+//	return exists(dir() / "restart");
+	return false;
+	// TODO
 }
 
 bool unit::need_settle(void) {
@@ -90,15 +96,17 @@ enum unit::state_t unit::get_state(void) { return state; }
 bool unit::request_start(shared_ptr<unit> u, string* reason) {
 	switch (u->state) {
 		case DOWN:
+			if (u->blocked()) {
+				if (reason) *reason = "unit blocked";
+				return false;
+			}
 			if (!u->can_start()) {
 				if (reason) *reason = "waiting for dependencies";
 				return false;
 			}
-			else {
-				if (reason) *reason = "now starting";
-				step_have_logrot(u);
-				return true;
-			}
+			if (reason) *reason = "now starting";
+			step_have_logrot(u);
+			return true;
 
 		case IN_LOGROT:
 		case IN_START:
@@ -135,11 +143,9 @@ bool unit::request_stop(shared_ptr<unit> u, string* reason) {
 				if (reason) *reason = "waiting for reverse dependencies";
 				return false;
 			}
-			else {
-				if (reason) *reason = "now stopping";
-				step_active_run(u);
-				return true;
-			}
+			if (reason) *reason = "now stopping";
+			step_active_run(u);
+			return true;
 
 		case IN_RDY_ERR:
 		case IN_RUN:
@@ -179,6 +185,7 @@ void unit::fork_logrot_script(shared_ptr<unit> u) {
 	pid_t pid = fork_();
 	if (pid == 0) {
 		chdir(logdir.c_str());
+		setsid();
 		execl((u->dir() / "logrotate").c_str(), (u->dir() / "logrotate").c_str(), u->name().c_str(), (char*) NULL);
 		exit(1);
 	}
@@ -195,6 +202,7 @@ void unit::fork_start_script(shared_ptr<unit> u) {
 	pid_t pid = fork_();
 	if (pid == 0) {
 		chdir(u->dir().c_str());
+		setsid();
 		output_logfile(u->name() + ".start");
 		execl((u->dir() / "start").c_str(), (u->dir() / "start").c_str(), (char*) NULL);
 		exit(1);
@@ -212,6 +220,7 @@ void unit::fork_run_script(shared_ptr<unit> u) {
 	pid_t pid = fork_();
 	if (pid == 0) {
 		chdir(u->dir().c_str());
+		setsid();
 		output_logfile(u->name() + ".run");
 		execl((u->dir() / "run").c_str(), (u->dir() / "run").c_str(), (char*) NULL);
 		exit(1);
@@ -229,6 +238,7 @@ void unit::fork_rdy_script(shared_ptr<unit> u) {
 	pid_t pid = fork_();
 	if (pid == 0) {
 		chdir(u->dir().c_str());
+		setsid();
 		execl((u->dir() / "ready").c_str(), (u->dir() / "ready").c_str(), (char*) NULL);
 		exit(1);
 	}
@@ -245,6 +255,7 @@ void unit::fork_stop_script(shared_ptr<unit> u) {
 	pid_t pid = fork_();
 	if (pid == 0) {
 		chdir(u->dir().c_str());
+		setsid();
 		output_logfile(u->name() + ".stop");
 		execl((u->dir() / "stop").c_str(), (u->dir() / "stop").c_str(), (char*) NULL);
 		exit(1);

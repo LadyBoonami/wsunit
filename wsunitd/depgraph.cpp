@@ -1,6 +1,7 @@
 #include "wsunitd.hpp"
 
 #include <fstream>
+#include <sstream>
 
 
 
@@ -10,12 +11,13 @@ void depgraph::refresh(void) {
 	add_new_units();
 	del_old_deps ();
 	add_new_deps ();
+	verify_deps  ();
 }
 
 void depgraph::start_stop_units(void) {
 	for (auto& [n, np] : nodes)
-		if (np->u->needed() && !np->u->masked()) start(np->u);
-		else                                     stop (np->u);
+		if (np->u->needed() && !np->u->blocked()) start(np->u);
+		else                                      stop (np->u);
 }
 
 void depgraph::start(shared_ptr<unit> u) {
@@ -126,7 +128,7 @@ void depgraph::del_old_deps(void) {
 
 				else {
 					log::debug("remove old revdep " + revdep->u->name() + " <- " + n + " from depgraph");
-					it = np->deps.erase(it);
+					it = np->revdeps.erase(it);
 				}
 			}
 		}
@@ -149,6 +151,48 @@ void depgraph::add_new_deps(void) {
 	}
 }
 
+void depgraph::verify_deps(void) {
+	for (auto& [n, np] : nodes) {
+		map<string, bool> visited;
+		deque<string> trail;
+		visit(n, visited, trail);
+	}
+}
+
+void depgraph::visit(const string& name, map<string, bool>& visited, deque<string>& trail) {
+	if (visited.count(name)) {
+		if (visited[name])
+			return;
+		else {
+			vector<string> cycle;
+			auto it = trail.begin();
+			while (*it != name) {
+				++it;
+				assert(it != trail.end());
+			}
+
+			stringstream ss;
+			ss << "...";
+
+			while (it != trail.end())
+				ss << " -> " << name;
+
+			log::warn("found dependency cycle: " + ss.str());
+			log::warn("continue while ignoring dependency " + trail.back() + " -> " + name);
+			rmdep(trail.back(), name);
+		}
+	}
+	visited[name] = false;
+	trail.push_back(name);
+
+	auto deps = get_deps(name);
+	for (auto& p : deps)
+		visit(p->name(), visited, trail);
+
+	trail.pop_back();
+	visited[name] = true;
+}
+
 void depgraph::adddep(string fst, string snd) {
 	if (nodes.count(fst) == 0) {
 		log::warn("could not add dependency between " + fst + " and " + snd + ": unit " + fst + " not found, ignoring...");
@@ -165,6 +209,48 @@ void depgraph::adddep(string fst, string snd) {
 
 	if (!contains(a->revdeps, b->u->name())) { log::debug("add revdep " + snd + " <- " + fst + " to depgraph"); a->revdeps.emplace_back(b); }
 	if (!contains(b->   deps, a->u->name())) { log::debug("add dep "    + fst + " -> " + snd + " to depgraph"); b->   deps.emplace_back(a); }
+}
+
+void depgraph::rmdep(string fst, string snd) {
+	if (nodes.count(fst) == 0) {
+		log::warn("could not remove dependency between " + fst + " and " + snd + ": unit " + fst + " not found, ignoring...");
+		return;
+	}
+
+	if (nodes.count(snd) == 0) {
+		log::warn("could not remove dependency between " + fst + " and " + snd + ": unit " + snd + " not found, ignoring...");
+		return;
+	}
+
+	{
+		auto& np = nodes.at(fst);
+		auto it = np->revdeps.begin();
+		while (it != np->revdeps.end()) {
+			auto revdep = it->lock();
+			if (revdep && revdep->u->name() != snd)
+				++it;
+
+			else {
+				it = np->revdeps.erase(it);
+				break;
+			}
+		}
+	}
+
+	{
+		auto& np = nodes.at(snd);
+		auto it = np->deps.begin();
+		while (it != np->deps.end()) {
+			auto dep = it->lock();
+			if (dep && dep->u->name() != fst)
+				++it;
+
+			else {
+				it = np->deps.erase(it);
+				break;
+			}
+		}
+	}
 }
 
 deque<weak_ptr<unit>> depgraph::to_start;
