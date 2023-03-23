@@ -21,15 +21,41 @@ void depgraph::start_stop_units(void) {
 }
 
 void depgraph::start(shared_ptr<unit> u) {
-	log::debug("add unit " + u->name() + " to start queue");
-	to_start.push_back(u);
-	queue_step();
+	auto it = to_stop.begin();
+	while (it != to_stop.end()) {
+		auto u_ = it->lock();
+		if (u_ && u_->name() == u->name()) {
+			log::debug("remove unit " + u_->term_name() + " from stop queue");
+			it = to_stop.erase(it);
+		}
+		else
+			++it;
+	}
+
+	if (!u->ready()) {
+		log::debug("add unit " + u->term_name() + " to start queue");
+		to_start.push_back(u);
+		queue_step();
+	}
 }
 
 void depgraph::stop (shared_ptr<unit> u) {
-	log::debug("add unit " + u->name() + " to stop queue");
-	to_stop.push_back(u);
-	queue_step();
+	auto it = to_start.begin();
+	while (it != to_start.end()) {
+		auto u_ = it->lock();
+		if (u_ && u_->name() == u->name()) {
+			log::debug("remove unit " + u_->term_name() + " from start queue");
+			it = to_start.erase(it);
+		}
+		else
+			++it;
+	}
+
+	if (u->running())  {
+		log::debug("add unit " + u->term_name() + " to stop queue");
+		to_stop.push_back(u);
+		queue_step();
+	}
 }
 
 
@@ -290,11 +316,12 @@ void depgraph::report(void) {
 	log::debug("current state:");
 	for (auto& [n, np] : nodes)
 		log::debug(" - " + np->u->term_name() + " " + unit::term_state_descr(np->u->get_state()) + " "
-			+ (np->u->needed   () ? "N" : "n")
-			+ (np->u->wanted   () ? "W" : "w")
-			+ (np->u->masked   () ? "M" : "m")
-			+ (np->u->can_start() ? "U" : "u")
-			+ (np->u->can_stop () ? "D" : "d")
+			+ (np->u->needed   () ? "\x1b[32mN\x1b[0m" : "n")
+			+ (np->u->wanted   () ? "\x1b[32mW\x1b[0m" : "w")
+			+ (np->u->masked   () ? "\x1b[31mM\x1b[0m" : "m")
+			+ (np->u->blocked  () ? "\x1b[31mB\x1b[0m" : "b")
+			+ (np->u->can_start() ? "\x1b[34mU\x1b[0m" : "u")
+			+ (np->u->can_stop () ? "\x1b[34mD\x1b[0m" : "d")
 		);
 
 	log::debug("start queue:");

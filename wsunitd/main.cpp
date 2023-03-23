@@ -47,13 +47,13 @@ void signal_loop(void) {
 
 		switch (signum) {
 			case SIGUSR1:
-				log::note("received SIGUSR1, recalculate set of needed units");
+				log::note("received \x1b[36mSIGUSR1\x1b[0m, recalculate set of needed units");
 				try { depgraph::start_stop_units(); }
 				catch (exception& ex) { log::err(string("failed to start/stop units: ") + ex.what()); }
 			break;
 
 			case SIGUSR2:
-				log::note("received SIGUSR2, refresh dependency graph and recalculate set of needed units");
+				log::note("received \x1b[36mSIGUSR2\x1b[0m, refresh dependency graph and recalculate set of needed units");
 				try {
 					depgraph::refresh();
 
@@ -64,20 +64,20 @@ void signal_loop(void) {
 			break;
 
 			case SIGCHLD: {
-				log::debug("received SIGCHLD, handle zombies");
+				log::debug("received \x1b[36mSIGCHLD\x1b[0m, handle zombies");
 				try { waitall(); }
 				catch (exception& ex) { log::err(string("failed to wait for children: ") + ex.what()); }
 			} break;
 
 			case SIGTERM:
-				log::note("received SIGTERM, shut down");
+				log::note("received \x1b[36mSIGTERM\x1b[0m, shut down");
 				in_shutdown = true;
 				try { depgraph::start_stop_units(); }
 				catch (exception& ex) { log::err(string("failed to start/stop units: ") + ex.what()); }
 			break;
 
 			case SIGINT:
-				log::note("received SIGINT, shut down");
+				log::note("received \x1b[36mSIGINT\x1b[0m, shut down");
 				in_shutdown = true;
 				try { depgraph::start_stop_units(); }
 				catch (exception& ex) { log::err(string("failed to start/stop units: ") + ex.what()); }
