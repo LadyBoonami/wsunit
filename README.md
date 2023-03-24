@@ -149,10 +149,9 @@ It then supervises them and reacts to commands delivered by signals.
   file).
 - When `wsunitd` receives a `SIGUSR2`, it refreshes its internal set of units
   and their dependencies, and then proceeds with the actions for `SIGUSR1`.
-- When `wsunitd` receives a `SIGTERM`, `SIGINT` or `SIGHUP`, it switches to
-  shutdown mode. The `@shutdown` unit replaces the `@default` unit as the
-  implicitly wanted unit. The process then behaves as if it received a
-  `SIGUSR1`.
+- When `wsunitd` receives a `SIGTERM` or `SIGINT`, it switches to shutdown mode.
+  The `@shutdown` unit replaces the `@default` unit as the implicitly wanted
+  unit. The process then behaves as if it received a `SIGUSR1`.
 
 ## Helper Scripts
 
