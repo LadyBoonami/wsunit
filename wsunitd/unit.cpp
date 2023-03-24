@@ -66,11 +66,11 @@ bool unit::need_settle(void) {
 	return name_ == "@shutdown" || exists(dir() / "start-wait-settled");
 }
 
-bool unit::has_logrot_script(void) { auto p = dir() / "logrot"; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_start_script (void) { auto p = dir() / "start" ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_run_script   (void) { auto p = dir() / "run"   ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_rdy_script   (void) { auto p = dir() / "ready" ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_stop_script  (void) { auto p = dir() / "stop"  ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_logrot_script(void) { auto p = dir() / "logrotate"; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_start_script (void) { auto p = dir() / "start"    ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_run_script   (void) { auto p = dir() / "run"      ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_rdy_script   (void) { auto p = dir() / "ready"    ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_stop_script  (void) { auto p = dir() / "stop"     ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
 
 enum unit::state_t unit::get_state(void) { return state; }
 
