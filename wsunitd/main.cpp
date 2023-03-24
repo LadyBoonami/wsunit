@@ -123,6 +123,10 @@ int main(int argc, char** argv) {
 	}
 	logdir = tmp;
 
+	mkdirs();
+	remove(logdir / "_");
+	output_logfile("_");
+
 	depgraph::refresh();
 	ofstream(statedir / "wsunitd.pid") << getpid() << endl;
 	depgraph::start_stop_units();

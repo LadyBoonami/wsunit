@@ -16,11 +16,13 @@ void depgraph::refresh(void) {
 
 void depgraph::start_stop_units(void) {
 	for (auto& [n, np] : nodes)
-		if (np->u->needed() && !np->u->blocked()) start(np->u);
-		else                                      stop (np->u);
+		if (np->u->needed() && !np->u->blocked()) start(np->u, false);
+		else                                      stop (np->u, false);
+
+	queue_step();
 }
 
-void depgraph::start(shared_ptr<unit> u) {
+void depgraph::start(shared_ptr<unit> u, bool now) {
 	auto it = to_stop.begin();
 	while (it != to_stop.end()) {
 		auto u_ = it->lock();
@@ -35,11 +37,12 @@ void depgraph::start(shared_ptr<unit> u) {
 	if (!u->ready()) {
 		log::debug("add unit " + u->term_name() + " to start queue");
 		to_start.push_back(u);
-		queue_step();
 	}
+	if (now)
+		queue_step();
 }
 
-void depgraph::stop (shared_ptr<unit> u) {
+void depgraph::stop (shared_ptr<unit> u, bool now) {
 	auto it = to_start.begin();
 	while (it != to_start.end()) {
 		auto u_ = it->lock();
@@ -54,8 +57,9 @@ void depgraph::stop (shared_ptr<unit> u) {
 	if (u->running())  {
 		log::debug("add unit " + u->term_name() + " to stop queue");
 		to_stop.push_back(u);
-		queue_step();
 	}
+	if (now)
+		queue_step();
 }
 
 
@@ -221,20 +225,20 @@ void depgraph::visit(const string& name, map<string, bool>& visited, deque<strin
 
 void depgraph::adddep(string fst, string snd) {
 	if (nodes.count(fst) == 0) {
-		log::warn("could not add dependency between " + fst + " and " + snd + ": unit " + fst + " not found, ignoring...");
+		log::warn("could not add dependency " + fst + " <- " + snd + ": unit " + fst + " not found, ignoring...");
 		return;
 	}
 
 	if (nodes.count(snd) == 0) {
-		log::warn("could not add dependency between " + fst + " and " + snd + ": unit " + snd + " not found, ignoring...");
+		log::warn("could not add dependency " + fst + " <- " + snd + ": unit " + snd + " not found, ignoring...");
 		return;
 	}
 
 	shared_ptr<node> a = nodes.at(fst);
 	shared_ptr<node> b = nodes.at(snd);
 
-	if (!contains(a->revdeps, b->u->name())) { log::debug("add revdep " + snd + " <- " + fst + " to depgraph"); a->revdeps.emplace_back(b); }
-	if (!contains(b->   deps, a->u->name())) { log::debug("add dep "    + fst + " -> " + snd + " to depgraph"); b->   deps.emplace_back(a); }
+	if (!contains(a->revdeps, b->u->name())) { log::debug("add revdep " + fst + " <- " + snd + " to depgraph"); a->revdeps.emplace_back(b); }
+	if (!contains(b->   deps, a->u->name())) { log::debug("add dep "    + snd + " -> " + fst + " to depgraph"); b->   deps.emplace_back(a); }
 }
 
 void depgraph::rmdep(string fst, string snd) {
@@ -307,8 +311,12 @@ void depgraph::queue_step(void) {
 	}
 }
 
-bool depgraph::is_settled(void) {
-	for (auto& [n, np] : nodes) if (np->u->running() && ! np->u->needed()) return false;
+bool depgraph::is_settled(string* reason) {
+	for (auto& [n, np] : nodes)
+		if (np->u->running() && (!np->u->needed() || np->u->blocked())) {
+			if (reason) *reason = "settle: waiting for " + np->u->term_name() + " to go down";
+			return false;
+		}
 	return true;
 }
 

@@ -3,8 +3,8 @@
 case "$1" in
 	drop)
 		if [ -n "$2" ]; then
-			rm ./"$2".*
-			exit
+			rm ./"$2".* || true
+			exit 0
 		fi
 	;;
 
@@ -21,7 +21,7 @@ case "$1" in
 						t=$ctime
 					fi
 					suf="$(date --date="@$btime" '+.%s.%Y-%m-%d.%H-%M-%S')"
-					mv "$f" "$f$suf"
+					mv "$f" "$f$suf" || true
 				fi
 			done
 
@@ -30,12 +30,12 @@ case "$1" in
 				btime="$(stat --format %W "$f")"
 				ctime="$(stat --format %Z "$f")"
 				if [ "$btime" != "-" ]; then
-					test "$btime" -gt "$dropbefore" || rm "$f"
+					test "$btime" -gt "$dropbefore" || rm "$f" || true
 				else
-					test "$ctime" -gt "$dropbefore" || rm "$f"
+					test "$ctime" -gt "$dropbefore" || rm "$f" || true
 				fi
 			done
-			exit
+			exit 0
 		fi
 	;;
 esac

@@ -31,8 +31,8 @@ class unit {
 		bool needed     (void);
 		bool masked     (void);
 		bool blocked    (void);
-		bool can_start  (void);
-		bool can_stop   (void);
+		bool can_start  (string* reason = 0);
+		bool can_stop   (string* reason = 0);
 		bool restart    (void);
 		bool need_settle(void);
 
@@ -93,11 +93,11 @@ class depgraph {
 		static void refresh(void);
 		static void start_stop_units(void);
 
-		static void start(shared_ptr<unit> u);
-		static void stop (shared_ptr<unit> u);
+		static void start(shared_ptr<unit> u, bool now = true);
+		static void stop (shared_ptr<unit> u, bool now = true);
 
 		static void queue_step(void);
-		static bool is_settled(void);
+		static bool is_settled(string* reason = 0);
 
 		static void report(void);
 

@@ -45,14 +45,22 @@ bool unit::blocked(void) {
 	return false;
 }
 
-bool unit::can_start(void) {
-	if (need_settle() && !depgraph::is_settled()) return false;
-	for (auto& p : depgraph::get_deps(name_)) if (!p->ready()) return false;
+bool unit::can_start(string* reason) {
+	if (need_settle() && !depgraph::is_settled(reason)) return false;
+	for (auto& p : depgraph::get_deps(name_))
+		if (!p->ready()) {
+			if (reason) *reason = "waiting for " + p->term_name() + " to be ready";
+			return false;
+		}
 	return true;
 }
 
-bool unit::can_stop(void) {
-	for (auto& p : depgraph::get_revdeps(name_)) if (p->running()) return false;
+bool unit::can_stop(string* reason) {
+	for (auto& p : depgraph::get_revdeps(name_))
+		if (p->running()) {
+			if (reason) *reason = "waiting for " + p->term_name() + " to stop running";
+			return false;
+		}
 	return true;
 }
 
@@ -100,10 +108,9 @@ bool unit::request_start(shared_ptr<unit> u, string* reason) {
 				if (reason) *reason = "unit blocked";
 				return false;
 			}
-			if (!u->can_start()) {
-				if (reason) *reason = "waiting for dependencies";
+			if (!u->can_start(reason))
 				return false;
-			}
+
 			if (reason) *reason = "now starting";
 			step_have_logrot(u);
 			return true;
@@ -139,10 +146,9 @@ bool unit::request_stop(shared_ptr<unit> u, string* reason) {
 			return false;
 
 		case UP:
-			if (!u->can_stop()) {
-				if (reason) *reason = "waiting for reverse dependencies";
+			if (!u->can_stop())
 				return false;
-			}
+
 			if (reason) *reason = "now stopping";
 			step_active_run(u);
 			return true;
