@@ -16,7 +16,7 @@ Using `wsunit` in a production setup is NOT RECOMMENDED at this point!
 - `WSUNIT_LOG_DIR` contains logs.
 
 These directories must be set as environment variables for `wsunitd`. The
-helper scripts `wsunit-system` and `wsunit-user` (see below) automatically set
+helper scripts `wsunitd-system` and `wsunitd-user` (see below) automatically set
 the variables and start `wsunitd`.
 
 ## Units
