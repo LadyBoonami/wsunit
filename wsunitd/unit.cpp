@@ -287,6 +287,8 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 	void unit::on_logrot_exit(pid_t pid, shared_ptr<unit> u, int status) {
 		assert(u->state == IN_LOGROT);
 
+		log::debug(u->term_name() + ": kill(-" + to_string(u->logrot_pid) + ", " + signal_string(SIGTERM) + ")");
+		kill(-u->logrot_pid, SIGTERM);
 		u->logrot_pid = 0;
 
 		if (status_ok(u, "logrotate", status))
@@ -300,6 +302,8 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 	void unit::on_start_exit(pid_t pid, shared_ptr<unit> u, int status) {
 		assert(u->state == IN_START);
 
+		log::debug(u->term_name() + ": kill(-" + to_string(u->start_pid) + ", " + signal_string(SIGTERM) + ")");
+		kill(-u->start_pid, SIGTERM);
 		u->start_pid = 0;
 
 		if (status_ok(u, "start", status))
@@ -311,6 +315,8 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 	}
 
 	void unit::on_rdy_exit(pid_t pid, shared_ptr<unit> u, int status) {
+		log::debug(u->term_name() + ": kill(-" + to_string(u->rdy_pid) + ", " + signal_string(SIGTERM) + ")");
+		kill(-u->rdy_pid, SIGTERM);
 		u->rdy_pid = 0;
 
 		switch (u->state) {
@@ -334,6 +340,8 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 	}
 
 	void unit::on_run_exit(pid_t pid, shared_ptr<unit> u, int status) {
+		log::debug(u->term_name() + ": kill(-" + to_string(u->run_pid) + ", " + signal_string(SIGTERM) + ")");
+		kill(-u->run_pid, SIGTERM);
 		u->run_pid = 0;
 
 		switch (u->state) {
@@ -358,6 +366,8 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 	void unit::on_stop_exit(pid_t pid, shared_ptr<unit> u, int status) {
 		assert(u->state == IN_STOP);
 
+		log::debug(u->term_name() + ": kill(-" + to_string(u->stop_pid) + ", " + signal_string(SIGTERM) + ")");
+		kill(-u->stop_pid, SIGTERM);
 		u->stop_pid = 0;
 
 		status_ok(u, "stop", status);
