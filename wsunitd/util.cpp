@@ -68,48 +68,6 @@ bool status_ok(shared_ptr<unit> u, const string scriptname, int status) {
 	assert(false);
 }
 
-/*
-pid_t fork_exec(const path& p, const string logname) {
-	pid_t pid = fork();
-
-	if (pid == 0) {
-		sigset_t sigs;
-		assert(sigemptyset(&sigs) == 0);
-		assert(sigaddset(&sigs, SIGUSR1) == 0);
-		assert(sigaddset(&sigs, SIGUSR2) == 0);
-		assert(sigaddset(&sigs, SIGCHLD) == 0);
-		assert(sigaddset(&sigs, SIGTERM) == 0);
-		assert(sigaddset(&sigs, SIGINT ) == 0);
-		assert(sigprocmask(SIG_UNBLOCK, &sigs, 0) == 0);
-
-		if (logname != "") {
-			int fd = open((logdir / logname).c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-			if (fd == -1) {
-				log::err(string("could not open log file ") + (logdir / logname).c_str() + ": " + strerror(errno));
-				exit(1);
-			}
-			if (dup2(fd, 1) == -1) {
-				log::err(string("could not set stdout to log file ") + (logdir / logname).c_str() + ": " + strerror(errno));
-				exit(1);
-			}
-			if (dup2(fd, 2) == -1) {
-				log::err(string("could not set stderr to log file ") + (logdir / logname).c_str() + ": " + strerror(errno));
-				exit(1);
-			}
-		}
-
-		execl(p.c_str(), p.c_str(), (char*) NULL);
-		log::warn("could not start " + p.string() + ": " + strerror(errno));
-		exit(1);
-	}
-
-	else if (pid < 0)
-		log::warn("could not start " + p.string() + ": " + strerror(errno));
-
-	return pid;
-}
-*/
-
 string signal_string(int signum) {
 	return string("SIG") + sigabbrev_np(signum) + " (" + to_string(signum) + ")";
 }

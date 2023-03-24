@@ -36,9 +36,19 @@ case "$1" in
 					ready)   color=green  ;;
 				esac
 
-				echo "\"$d\" [color=\"$color\"];"
-				find "$d/deps" -type f -printf "\"$d\" -> \"%f\" [direction=\"reverse\", arrowtail=\"rev\"];\\n" 2>/dev/null
-				find "$d/revdeps" -type f -printf "\"%f\" -> \"$d\" [];\\n" 2>/dev/null
+				shape="ellipse"
+				if [ -e "$WSUNIT_STATE_DIR/wanted/$d" ] && [ -e "$WSUNIT_STATE_DIR/masked/$d" ]; then
+					shape="diamond"
+				elif [ -e "$WSUNIT_STATE_DIR/wanted/$d" ]; then
+					shape="triangle"
+				elif [ -e "$WSUNIT_STATE_DIR/masked/$d" ]; then
+					shape="invtriangle"
+				fi
+
+
+				echo "\"$d\" [shape=\"$shape\", color=\"$color\"];"
+				find "$d/deps" -type f -printf "\"$d\" -> \"%f\" [dir=\"both\", arrowhead=\"empty\", arrowtail=\"inv\"];\\n" 2>/dev/null
+				find "$d/revdeps" -type f -printf "\"%f\" -> \"$d\" [dir=\"both\", arrowhead=\"normal\", arrowtail=\"invempty\"];\\n" 2>/dev/null
 			done
 			echo "}"
 		) | dot -Tx11
