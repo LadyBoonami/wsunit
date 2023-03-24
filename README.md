@@ -174,3 +174,7 @@ to run `wsunitd` inside a dbus session.
 ### `wsunit`
 
 TODO
+
+### `logmgr`
+
+TODO
