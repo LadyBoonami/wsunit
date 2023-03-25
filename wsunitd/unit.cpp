@@ -74,11 +74,18 @@ bool unit::need_settle(void) {
 	return name_ == "@shutdown" || exists(dir() / "start-wait-settled");
 }
 
-bool unit::has_logrot_script(void) { auto p = dir() / "logrotate"; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_start_script (void) { auto p = dir() / "start"    ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_run_script   (void) { auto p = dir() / "run"      ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_rdy_script   (void) { auto p = dir() / "ready"    ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_stop_script  (void) { auto p = dir() / "stop"     ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_logrot_script(void) {
+	auto p = dir() / "logrotate";
+	if (is_regular_file(p) && access(p.c_str(), X_OK) == 0) return true;
+	p = confdir / "logrotate";
+	if (is_regular_file(p) && access(p.c_str(), X_OK) == 0) return true;
+	return false;
+}
+
+bool unit::has_start_script(void) { auto p = dir() / "start"    ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_run_script  (void) { auto p = dir() / "run"      ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_rdy_script  (void) { auto p = dir() / "ready"    ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_stop_script (void) { auto p = dir() / "stop"     ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
 
 enum unit::state_t unit::get_state(void) { return state; }
 
@@ -192,7 +199,8 @@ void unit::fork_logrot_script(shared_ptr<unit> u) {
 	if (pid == 0) {
 		chdir(logdir.c_str());
 		setsid();
-		execl((u->dir() / "logrotate").c_str(), (u->dir() / "logrotate").c_str(), u->name().c_str(), (char*) NULL);
+		path p = is_regular_file(u->dir() / "logrotate") ? (u->dir() / "logrotate") : (confdir / "logrotate");
+		execl(p.c_str(), p.c_str(), u->name().c_str(), (char*) NULL);
 		exit(1);
 	}
 	else if (pid > 0) {
@@ -209,7 +217,7 @@ void unit::fork_start_script(shared_ptr<unit> u) {
 	if (pid == 0) {
 		chdir(u->dir().c_str());
 		setsid();
-		output_logfile(u->name() + ".start");
+		output_logfile(u->name() + ".log");
 		execl((u->dir() / "start").c_str(), (u->dir() / "start").c_str(), (char*) NULL);
 		exit(1);
 	}
@@ -227,7 +235,7 @@ void unit::fork_run_script(shared_ptr<unit> u) {
 	if (pid == 0) {
 		chdir(u->dir().c_str());
 		setsid();
-		output_logfile(u->name() + ".run");
+		output_logfile(u->name() + ".log");
 		execl((u->dir() / "run").c_str(), (u->dir() / "run").c_str(), (char*) NULL);
 		exit(1);
 	}
@@ -262,7 +270,7 @@ void unit::fork_stop_script(shared_ptr<unit> u) {
 	if (pid == 0) {
 		chdir(u->dir().c_str());
 		setsid();
-		output_logfile(u->name() + ".stop");
+		output_logfile(u->name() + ".log");
 		execl((u->dir() / "stop").c_str(), (u->dir() / "stop").c_str(), (char*) NULL);
 		exit(1);
 	}

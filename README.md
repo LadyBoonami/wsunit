@@ -102,11 +102,11 @@ On start (each if applicable):
   unit returns to the `DOWN` state.
 - The `start` file is called with the unit's directory in `WSUNIT_CONFIG_DIR` as
   working directory, stdout and stderr will append to
-  `WSUNIT_LOG_DIR/<name>.start`. If this script fails, the unit returns to the
+  `WSUNIT_LOG_DIR/<name>.log`. If this script fails, the unit returns to the
   `DOWN` state.
 - The `run` file is started with the unit's directory in `WSUNIT_CONFIG_DIR` as
   working directory, stdout and stderr will append to
-  `WSUNIT_LOG_DIR/<name>.run`. If this script exits, the unit begins the stop
+  `WSUNIT_LOG_DIR/<name>.log`. If this script exits, the unit begins the stop
   process.
 - The `ready` file is called with the unit's directory in `WSUNIT_CONFIG_DIR`
   as working directory. The unit is marked ready as soon as this script exits.
@@ -115,8 +115,8 @@ On stop (each if applicable):
 
 - The `stop` file is called with the unit's directory in `WSUNIT_CONFIG_DIR` as
   working directory, stdout and stderr will append to
-  `WSUNIT_LOG_DIR/<name>.stop`. The unit is marked as down as soon as this
-  script exits.
+  `WSUNIT_LOG_DIR/<name>.log`. The unit is marked as down as soon as this script
+  exits.
 
 Details:
 
@@ -162,11 +162,11 @@ and sets up the directory, if the variable is not already set.
 
 Both scripts set the following environment variables:
 
-| Variable            | `wsunitd-system`  | `wsunitd-user`            | `wsunitd-user` fallback     |
-|:-------------------:|:-----------------:|:-------------------------:|:---------------------------:|
-| `WSUNIT_CONFIG_DIR` | `/etc/wsunit`     | `$XDG_CONFIG_HOME/wsunit` | `$HOME/.config/wsunit`      |
-| `WSUNIT_STATE_DIR`  | `/run/wsunit`     | `$XDG_RUNTIME_DIR/wsunit` | -                           |
-| `WSUNIT_LOG_DIR`    | `/var/log/wsunit` | `$XDG_DATA_HOME/wsunit`   | `$HOME/.local/share/wsunit` |
+| Variable            | `wsunitd-system`  | `wsunitd-user`            | `wsunitd-user` fallback         |
+|:-------------------:|:-----------------:|:-------------------------:|:-------------------------------:|
+| `WSUNIT_CONFIG_DIR` | `/etc/wsunit`     | `$XDG_CONFIG_HOME/wsunit` | `$HOME/.config/wsunit`          |
+| `WSUNIT_STATE_DIR`  | `/run/wsunit`     | `$XDG_RUNTIME_DIR/wsunit` | -                               |
+| `WSUNIT_LOG_DIR`    | `/var/log/wsunit` | `$XDG_DATA_HOME/wsunit`   | `$HOME/.local/share/wsunit/log` |
 
 Then they `exec` into `wsunitd`. `wsunitd-user` can be given the `--dbus` option
 to run `wsunitd` inside a dbus session.

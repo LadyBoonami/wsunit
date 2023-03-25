@@ -3,44 +3,76 @@
 case "$1" in
 	drop)
 		if [ -n "$2" ]; then
-			rm ./"$2".* || true
+			rm ./"$2".log* || true
 			exit 0
 		fi
 	;;
 
 	keep)
-		if [ -n "$2" ] && [ -n "$3" ] && ( echo "$2" | grep -q "^[0-9]*$" ); then
-			for f in ./"$3".{start,run,stop}; do
-				if [ -e "$f" ]; then
-					btime="$(stat --format %W "$f")"
-					ctime="$(stat --format %Z "$f")"
-					t=
-					if [ "$btime" != "-" ]; then
-						t=$btime
-					else
-						t=$ctime
-					fi
-					suf="$(date --date="@$btime" '+.%s.%Y-%m-%d.%H-%M-%S')"
-					mv "$f" "$f$suf" || true
-				fi
-			done
+		n="$2"
+		unit="$3"
+		stem="$4"
 
-			dropbefore=$(($(date +%s) - $2 * 86400))
-			for f in ./"$3".*; do
-				btime="$(stat --format %W "$f")"
-				ctime="$(stat --format %Z "$f")"
-				if [ "$btime" != "-" ]; then
-					test "$btime" -gt "$dropbefore" || rm "$f" || true
-				else
-					test "$ctime" -gt "$dropbefore" || rm "$f" || true
+		case "$unit" in
+			days|weeks|months|years)
+				factor=
+				case "$unit" in
+					days)   factor=$((      24 * 60 * 60)) ;;
+					weeks)  factor=$((  7 * 24 * 60 * 60)) ;;
+					months) factor=$(( 30 * 24 * 60 * 60)) ;;
+					years)  factor=$((365 * 24 * 60 * 60)) ;;
+				esac
+
+				if [ -n "$n" ] && [ -n "$stem" ] && ( echo "$n" | grep -q "^[0-9]*$" ); then
+					f="./${stem}.log"
+					if [ -e "$f" ]; then
+						btime="$(stat --format %W "$f")"
+						ctime="$(stat --format %Z "$f")"
+						t=
+						if [ "$btime" != "-" ]; then
+							t=$btime
+						else
+							t=$ctime
+						fi
+						suf="$(date --date="@$btime" '+.%s.%Y-%m-%d.%H-%M-%S')"
+						mv "$f" "$f$suf"
+					fi
+
+					dropbefore=$(($(date +%s) - n * factor))
+					for f in "./${stem}.log."*; do
+						btime="$(stat --format %W "$f")"
+						ctime="$(stat --format %Z "$f")"
+						if [ "$btime" != "-" ]; then
+							test "$btime" -gt "$dropbefore" || rm "$f"
+						else
+							test "$ctime" -gt "$dropbefore" || rm "$f"
+						fi
+					done
+					exit 0
 				fi
-			done
-			exit 0
-		fi
+			;;
+
+			files)
+				if [ -n "$n" ] && [ -n "$stem" ] && ( echo "$n" | grep -q "^[0-9]*$" ); then
+					ls "./${stem}.log"* | sort | tail -n "+$((n + 1))" | xargs --no-run-if-empty rm
+
+					for i in $(seq $((n - 1)) -1 1); do
+						f="./${stem}.log.$i"
+						f_="./${stem}.log.$((i + 1))"
+						test ! -e "$f" || mv "$f" "$f_"
+					done
+
+					test ! -e "./${stem}.log" || mv "./${stem}.log" "./${stem}.log.1"
+
+					exit 0
+				fi
+			;;
+		esac
 	;;
 esac
 
 echo "Usage:"
-echo " $0 drop <stem>         Delete previous logs without keeping copies."
-echo " $0 keep <days> <stem>  Timestamp old logs, delete if older than given amount of days."
+echo " $0 drop <stem>                                Delete previous logs without keeping copies."
+echo " $0 keep <n> (days|weeks|months|years) <stem>  Timestamp logs, delete if too old."
+echo " $0 keep <n> files <stem>                      Number logs, delete all except the last <n>"
 exit 1

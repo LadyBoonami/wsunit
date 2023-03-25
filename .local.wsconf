@@ -1,2 +1,5 @@
 scripts/*
 	-mi f.sh
+
+tests/*
+	-mi f.sh

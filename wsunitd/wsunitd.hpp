@@ -161,8 +161,6 @@ typedef void (*term_handler)(pid_t, shared_ptr<unit>, int);
 void term_add(pid_t pid, term_handler h, shared_ptr<unit> u);
 void term_handle(pid_t pid, int status);
 
-//pid_t fork_exec(const path& p, const string logname);
-
 pid_t fork_(void);
 void output_logfile(const string name);
 
