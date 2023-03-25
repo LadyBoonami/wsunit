@@ -16,13 +16,13 @@ bool in_shutdown;
 
 
 void mkdirs(void) {
-	if (!is_directory(confdir              )) create_directory(confdir              );
-	if (!is_directory(confdir / "@default" )) create_directory(confdir / "@default" );
-	if (!is_directory(confdir / "@shutdown")) create_directory(confdir / "@shutdown");
-	if (!is_directory(statedir             )) create_directory(statedir             );
-	if (!is_directory(statedir / "wanted"  )) create_directory(statedir / "wanted"  );
-	if (!is_directory(statedir / "masked"  )) create_directory(statedir / "masked"  );
-	if (!is_directory(statedir / "state"   )) create_directory(statedir / "state"   );
+	if (!is_directory(confdir              )) create_directories(confdir              );
+	if (!is_directory(confdir / "@default" )) create_directories(confdir / "@default" );
+	if (!is_directory(confdir / "@shutdown")) create_directories(confdir / "@shutdown");
+	if (!is_directory(statedir             )) create_directories(statedir             );
+	if (!is_directory(statedir / "wanted"  )) create_directories(statedir / "wanted"  );
+	if (!is_directory(statedir / "masked"  )) create_directories(statedir / "masked"  );
+	if (!is_directory(statedir / "state"   )) create_directories(statedir / "state"   );
 }
 
 void signal_loop(void) {
