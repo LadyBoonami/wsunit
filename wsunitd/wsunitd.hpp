@@ -155,6 +155,13 @@ template <class T, class F, class R> R with_weak_ptr(const weak_ptr<T>& wp, R de
 	return fn(sp);
 }
 
+template <class C, class Fn> void filter(C& cont, Fn f) {
+	auto it = cont.begin();
+	while (it != cont.end())
+		if (f(*it)) ++it;
+		else it = cont.erase(it);
+}
+
 string signal_string(int signum);
 
 typedef void (*term_handler)(pid_t, shared_ptr<unit>, int);

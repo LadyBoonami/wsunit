@@ -23,43 +23,21 @@ void depgraph::start_stop_units(void) {
 }
 
 void depgraph::start(shared_ptr<unit> u, bool now) {
-	auto it = to_stop.begin();
-	while (it != to_stop.end()) {
-		auto u_ = it->lock();
-		if (u_ && u_->name() == u->name()) {
-			log::debug("remove unit " + u_->term_name() + " from stop queue");
-			it = to_stop.erase(it);
-		}
-		else
-			++it;
-	}
+	filter(to_start, [&u](weak_ptr<unit>& w) { return with_weak_ptr(w, false, [&u](shared_ptr<unit>& u_) { return u_->name() != u->name(); }); });
+	filter(to_stop , [&u](weak_ptr<unit>& w) { return with_weak_ptr(w, false, [&u](shared_ptr<unit>& u_) { return u_->name() != u->name(); }); });
 
-	if (!u->ready()) {
-		log::debug("add unit " + u->term_name() + " to start queue");
-		to_start.push_back(u);
-	}
-	if (now)
-		queue_step();
+	log::debug("add unit " + u->term_name() + " to start queue");
+	to_start.push_back(u);
+	if (now) queue_step();
 }
 
-void depgraph::stop (shared_ptr<unit> u, bool now) {
-	auto it = to_start.begin();
-	while (it != to_start.end()) {
-		auto u_ = it->lock();
-		if (u_ && u_->name() == u->name()) {
-			log::debug("remove unit " + u_->term_name() + " from start queue");
-			it = to_start.erase(it);
-		}
-		else
-			++it;
-	}
+void depgraph::stop(shared_ptr<unit> u, bool now) {
+	filter(to_start, [&u](weak_ptr<unit>& w) { return with_weak_ptr(w, false, [&u](shared_ptr<unit>& u_) { return u_->name() != u->name(); }); });
+	filter(to_stop , [&u](weak_ptr<unit>& w) { return with_weak_ptr(w, false, [&u](shared_ptr<unit>& u_) { return u_->name() != u->name(); }); });
 
-	if (u->running())  {
-		log::debug("add unit " + u->term_name() + " to stop queue");
-		to_stop.push_back(u);
-	}
-	if (now)
-		queue_step();
+	log::debug("add unit " + u->term_name() + " to stop queue");
+	to_stop.push_back(u);
+	if (now) queue_step();
 }
 
 
@@ -129,39 +107,31 @@ void depgraph::add_new_units(void) {
 
 void depgraph::del_old_deps(void) {
 	for (auto& [n, np] : nodes) {
-		{
-			auto it = np->deps.begin();
-			while (it != np->deps.end()) {
-				auto dep = it->lock();
+		filter(np->deps, [&n = n, &np = np](weak_ptr<node>& dp) {
+			return with_weak_ptr(dp, false, [n, np](shared_ptr<node>& dep) {
 				if (
-					dep &&
-					is_directory(dep->u->dir()) &&
-					(exists(np->u->dir() / "deps" / dep->u->name()) || exists(dep->u->dir() / "revdeps" / np->u->name()))
-				) ++it;
-
-				else {
+					!is_directory(dep->u->dir()) ||
+					!(exists(np->u->dir() / "deps" / dep->u->name()) || exists(dep->u->dir() / "revdeps" / np->u->name()))
+				) {
 					log::debug("remove old dep " + n + " -> " + dep->u->name() + " from depgraph");
-					it = np->deps.erase(it);
+					return false;
 				}
-			}
-		}
+				return true;
+			});
+		});
 
-		{
-			auto it = np->revdeps.begin();
-			while (it != np->revdeps.end()) {
-				auto revdep = it->lock();
+		filter(np->revdeps, [&n = n, &np = np](weak_ptr<node>& rp) {
+			return with_weak_ptr(rp, false, [n, np](shared_ptr<node>& revdep) {
 				if (
-					revdep &&
-					is_directory(revdep->u->dir()) &&
-					(exists(revdep->u->dir() / "deps" / np->u->name()) || exists(np->u->dir() / "revdeps" / revdep->u->name()))
-				) ++it;
-
-				else {
+					!is_directory(revdep->u->dir()) ||
+					!(exists(revdep->u->dir() / "deps" / np->u->name()) || exists(np->u->dir() / "revdeps" / revdep->u->name()))
+				) {
 					log::debug("remove old revdep " + revdep->u->name() + " <- " + n + " from depgraph");
-					it = np->revdeps.erase(it);
+					return false;
 				}
-			}
-		}
+				return true;
+			});
+		});
 	}
 }
 
@@ -252,35 +222,8 @@ void depgraph::rmdep(string fst, string snd) {
 		return;
 	}
 
-	{
-		auto& np = nodes.at(fst);
-		auto it = np->revdeps.begin();
-		while (it != np->revdeps.end()) {
-			auto revdep = it->lock();
-			if (revdep && revdep->u->name() != snd)
-				++it;
-
-			else {
-				it = np->revdeps.erase(it);
-				break;
-			}
-		}
-	}
-
-	{
-		auto& np = nodes.at(snd);
-		auto it = np->deps.begin();
-		while (it != np->deps.end()) {
-			auto dep = it->lock();
-			if (dep && dep->u->name() != fst)
-				++it;
-
-			else {
-				it = np->deps.erase(it);
-				break;
-			}
-		}
-	}
+	filter(nodes.at(fst)->revdeps, [&snd](weak_ptr<node>& rp) { return with_weak_ptr(rp, false, [snd](shared_ptr<node>& revdep) { return revdep->u->name() != snd; }); });
+	filter(nodes.at(snd)->deps   , [&fst](weak_ptr<node>& dp) { return with_weak_ptr(dp, false, [fst](shared_ptr<node>&    dep) { return    dep->u->name() != fst; }); });
 }
 
 deque<weak_ptr<unit>> depgraph::to_start;
@@ -346,26 +289,23 @@ void depgraph::start_step(bool& changed) {
 	for (auto& p : to_start)
 		log::debug(" - " + with_weak_ptr(p, string("<stale>"), [](shared_ptr<unit> p){ return p->name(); }));
 
-	auto it = to_start.begin();
-	while (it != to_start.end()) {
-		auto u = it->lock();
+	filter(to_start, [&changed](weak_ptr<unit> w) {
+		auto u = w.lock();
 		string reason = "?";
 
 		if (u) {
 			if (!unit::request_start(u, &reason)) {
 				log::debug("keep unit " + (u ? u->name() : string("?")) + " in start queue: " + reason);
-				++it;
-				continue;
+				return true;
 			}
 		}
 		else
 			reason = "stale unit";
 
 		log::debug("drop unit " + (u ? u->name() : string("?")) + " from start queue: " + reason);
-		it = to_start.erase(it);
 		changed = true;
-		continue;
-	}
+		return false;
+	});
 }
 
 void depgraph::stop_step(bool& changed) {
@@ -373,26 +313,23 @@ void depgraph::stop_step(bool& changed) {
 	for (auto& p : to_stop)
 		log::debug(" - " + with_weak_ptr(p, string("<stale>"), [](shared_ptr<unit> p){ return p->name(); }));
 
-	auto it = to_stop.begin();
-	while (it != to_stop.end()) {
-		auto u = it->lock();
+	filter(to_stop, [&changed](weak_ptr<unit> w) {
+		auto u = w.lock();
 		string reason = "?";
 
 		if (u) {
 			if (!unit::request_stop(u, &reason)) {
 				log::debug("keep unit " + (u ? u->name() : string("?")) + " in stop queue: " + reason);
-				++it;
-				continue;
+				return true;
 			}
 		}
 		else
 			reason = "stale unit";
 
 		log::debug("drop unit " + (u ? u->name() : string("?")) + " from stop queue: " + reason);
-		it = to_stop.erase(it);
 		changed = true;
-		continue;
-	}
+		return false;
+	});
 }
 
 void depgraph::write_state(void) {
