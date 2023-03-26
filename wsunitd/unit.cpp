@@ -197,9 +197,17 @@ void unit::fork_logrot_script(shared_ptr<unit> u) {
 	log::note(u->term_name() + ": exec logrotate script");
 	pid_t pid = fork_();
 	if (pid == 0) {
-		chdir(logdir.c_str());
-		setsid();
+		if (chdir(logdir.c_str()) == -1) {
+			log::err("failed to chdir to " + logdir.string() + ": " + strerror(errno));
+			exit(1);
+		}
+		pid_t sid = setsid();
+		if (sid == -1) {
+			log::err(string("failed to run setsid: ") + strerror(errno));
+			exit(1);
+		}
 		path p = is_regular_file(u->dir() / "logrotate") ? (u->dir() / "logrotate") : (confdir / "logrotate");
+		log::debug(string("fork logrotate as pid ") + to_string(getpid()) + " sid " + to_string(sid));
 		execl(p.c_str(), p.c_str(), u->name().c_str(), (char*) NULL);
 		exit(1);
 	}
@@ -215,8 +223,16 @@ void unit::fork_start_script(shared_ptr<unit> u) {
 	log::note(u->term_name() + ": exec start script");
 	pid_t pid = fork_();
 	if (pid == 0) {
-		chdir(u->dir().c_str());
-		setsid();
+		if (chdir(u->dir().c_str()) == -1) {
+			log::err("failed to chdir to " + u->dir().string() + ": " + strerror(errno));
+			exit(1);
+		}
+		pid_t sid = setsid();
+		if (sid == -1) {
+			log::err(string("failed to run setsid: ") + strerror(errno));
+			exit(1);
+		}
+		log::debug(string("fork start as pid ") + to_string(getpid()) + " sid " + to_string(sid));
 		output_logfile(u->name() + ".log");
 		execl((u->dir() / "start").c_str(), (u->dir() / "start").c_str(), (char*) NULL);
 		exit(1);
@@ -233,8 +249,16 @@ void unit::fork_run_script(shared_ptr<unit> u) {
 	log::note(u->term_name() + ": exec run script");
 	pid_t pid = fork_();
 	if (pid == 0) {
-		chdir(u->dir().c_str());
-		setsid();
+		if (chdir(u->dir().c_str()) == -1) {
+			log::err("failed to chdir to " + u->dir().string() + ": " + strerror(errno));
+			exit(1);
+		}
+		pid_t sid = setsid();
+		if (sid == -1) {
+			log::err(string("failed to run setsid: ") + strerror(errno));
+			exit(1);
+		}
+		log::debug(string("fork run as pid ") + to_string(getpid()) + " sid " + to_string(sid));
 		output_logfile(u->name() + ".log");
 		execl((u->dir() / "run").c_str(), (u->dir() / "run").c_str(), (char*) NULL);
 		exit(1);
@@ -251,8 +275,16 @@ void unit::fork_rdy_script(shared_ptr<unit> u) {
 	log::note(u->term_name() + ": exec ready script");
 	pid_t pid = fork_();
 	if (pid == 0) {
-		chdir(u->dir().c_str());
-		setsid();
+		if (chdir(u->dir().c_str()) == -1) {
+			log::err("failed to chdir to " + u->dir().string() + ": " + strerror(errno));
+			exit(1);
+		}
+		pid_t sid = setsid();
+		if (sid == -1) {
+			log::err(string("failed to run setsid: ") + strerror(errno));
+			exit(1);
+		}
+		log::debug(string("fork ready as pid ") + to_string(getpid()) + " sid " + to_string(sid));
 		execl((u->dir() / "ready").c_str(), (u->dir() / "ready").c_str(), (char*) NULL);
 		exit(1);
 	}
@@ -268,8 +300,16 @@ void unit::fork_stop_script(shared_ptr<unit> u) {
 	log::note(u->term_name() + ": exec stop script");
 	pid_t pid = fork_();
 	if (pid == 0) {
-		chdir(u->dir().c_str());
-		setsid();
+		if (chdir(u->dir().c_str()) == -1) {
+			log::err("failed to chdir to " + u->dir().string() + ": " + strerror(errno));
+			exit(1);
+		}
+		pid_t sid = setsid();
+		if (sid == -1) {
+			log::err(string("failed to run setsid: ") + strerror(errno));
+			exit(1);
+		}
+		log::debug(string("fork stop as pid ") + to_string(getpid()) + " sid " + to_string(sid));
 		output_logfile(u->name() + ".log");
 		execl((u->dir() / "stop").c_str(), (u->dir() / "stop").c_str(), (char*) NULL);
 		exit(1);

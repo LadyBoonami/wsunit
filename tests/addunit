@@ -1,0 +1,82 @@
+#!/bin/bash
+
+mkdir config/base
+
+mkdir config/derived
+mkdir -p config/derived/deps
+touch config/derived/deps/base
+mkdir -p config/derived/revdeps
+touch config/derived/revdeps/@default
+
+
+
+start
+sleep 2
+
+if [ "$(cat state/state/base)" != "ready" ]; then
+	err "base did not start correctly"
+	kill -TERM "$pid"
+	exit 1
+fi
+
+if [ "$(cat state/state/derived)" != "ready" ]; then
+	err "derived did not start correctly"
+	kill -TERM "$pid"
+	exit 1
+fi
+
+
+
+mkdir config/intermediate
+mkdir -p config/intermediate/deps
+touch config/intermediate/deps/base
+mkdir -p config/intermediate/revdeps
+touch config/intermediate/revdeps/derived
+
+
+
+signal USR2
+sleep 2
+
+if [ "$(cat state/state/base)" != "ready" ]; then
+	err "base died"
+	kill -TERM "$pid"
+	exit 1
+fi
+
+if [ "$(cat state/state/intermediate)" != "ready" ]; then
+	err "intermediate did not start correctly"
+	kill -TERM "$pid"
+	exit 1
+fi
+
+if [ "$(cat state/state/derived)" != "ready" ]; then
+	err "derived died"
+	kill -TERM "$pid"
+	exit 1
+fi
+
+
+
+stop
+
+
+
+if [ "$(cat state/state/base)" != "down" ]; then
+	err "base did not stop correctly"
+	exit 1
+fi
+
+if [ "$(cat state/state/intermediate)" != "down" ]; then
+	err "intermediate did not stop correctly"
+	exit 1
+fi
+
+if [ "$(cat state/state/derived)" != "down" ]; then
+	err "derived did not stop correctly"
+	exit 1
+fi
+
+
+
+ok completed

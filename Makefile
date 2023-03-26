@@ -20,5 +20,13 @@ state_machine.png: state_machine.dot
 README.html: README.md state_machine.png
 	pandoc $< -o $@
 
-tests: wsunitd/wsunitd cronexec/cronexec
-	./runtests
+
+
+testfiles=$(wildcard tests/*)
+
+.PHONY: tests
+tests: $(testfiles)
+
+.PHONY: $(testfiles)
+$(testfiles): %: wsunitd/wsunitd cronexec/cronexec
+	./runtest $@

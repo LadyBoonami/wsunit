@@ -83,11 +83,15 @@ void depgraph::del_old_units(void) {
 		else if (it->second->u->running()) {
 			// remove all links to the graph, unit will be safely stopped as it is no longer needed(), and then remain
 			// idle in the graph until the next refresh
-			// TODO: what if wanted()?
 
 			log::debug("unlink old unit " + it->second->u->term_name() + " from depgraph");
 			it->second->deps.clear();
 			it->second->revdeps.clear();
+
+			remove(statedir / "masked" / it->second->u->name());
+			remove(statedir / "wanted" / it->second->u->name());
+
+			++it;
 		}
 		else {
 			log::debug("remove old unit " + it->second->u->term_name() + " from depgraph");
@@ -348,4 +352,8 @@ void depgraph::write_state(void) {
 
 		// TODO: pid file?
 	}
+
+	for (directory_entry& de : directory_iterator(statedir / "state"))
+		if (nodes.count(de.path().filename().string()) == 0)
+			remove_all(de);
 }

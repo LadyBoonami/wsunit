@@ -3,3 +3,6 @@ scripts/*
 
 tests/*
 	-mi f.sh
+
+runtest
+	-mi f.sh

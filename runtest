@@ -1,0 +1,76 @@
+#!/bin/bash
+
+f="$1"
+export TESTNAME="$(basename "$f")"
+bin="$(realpath "$f")"
+base="/tmp/wsunit-tests/$TESTNAME"
+
+export WSUNIT_DEBUG=1
+export WSUNIT_CONFIG_DIR="$base/config"
+export WSUNIT_STATE_DIR="$base/state"
+export WSUNIT_LOG_DIR="$base/log"
+export WSUNITD="$(realpath ./wsunitd/wsunitd)"
+
+rm -rf "$base" >/dev/null 2>&1
+mkdir -p "$WSUNIT_CONFIG_DIR" "$WSUNIT_STATE_DIR" "$WSUNIT_LOG_DIR"
+
+function info() {
+	echo -e "[ \e[34mINFO\e[0m ] $TESTNAME: $*" >&2
+}
+export -f info
+
+function ok() {
+	echo -e "[  \e[32mOK\e[0m  ] $TESTNAME: $*" >&2
+	if [ -n "$WSUNIT_PID" ]; then
+		kill -9 -- -"$WSUNIT_PID" >/dev/null 2>&1 || true
+	fi
+}
+export -f ok
+
+function err() {
+	echo -e "[ \e[31mERR\e[0m  ] $TESTNAME: $*" >&2
+	tail -n +1 log/*
+	if [ -n "$WSUNIT_PID" ]; then
+		kill -9 -- -"$WSUNIT_PID" >/dev/null 2>&1 || true
+	fi
+	exit 1
+}
+export -f err
+
+function signal() {
+	if ! kill -0 "$WSUNIT_PID" >/dev/null 2>&1; then
+		err "wsunitd died"
+	fi
+	kill "-$1" "$WSUNIT_PID"
+}
+export -f signal
+
+function start() {
+	info "start wsunitd"
+	setsid "${WSUNITD}" &
+	WSUNIT_PID="$!"
+}
+export -f start
+
+function stop() {
+	info "kill wsunitd"
+	signal TERM
+	for i in `seq 1 10`; do
+		if ! kill -0 "$WSUNIT_PID" >/dev/null 2>&1; then
+			wait "$WSUNIT_PID"
+			info "wsunitd terminated"
+			return 0
+		fi
+		sleep 1
+	done
+	err "wsunitd failed to stop"
+}
+export -f stop
+
+( cd "$base" && source "$bin" )
+
+if [ "$?" -ne 0 ]; then
+	exit 1
+fi
+
+rm -rf "$base" || true

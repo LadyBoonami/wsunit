@@ -1,0 +1,62 @@
+#!/bin/bash
+
+mkdir config/helloworld
+
+cat >config/helloworld/logrotate <<-"EOF"
+	#!/bin/bash
+	echo "logrotate executing"
+EOF
+chmod +x config/helloworld/logrotate
+
+cat >config/helloworld/start <<-"EOF"
+	#!/bin/bash
+	echo "start executing"
+EOF
+chmod +x config/helloworld/start
+
+cat >config/helloworld/run <<-"EOF"
+	#!/bin/bash
+	echo "run executing"
+EOF
+chmod +x config/helloworld/run
+
+cat >config/helloworld/stop <<-"EOF"
+	#!/bin/bash
+	echo "stop executing"
+EOF
+chmod +x config/helloworld/stop
+
+mkdir -p config/helloworld/revdeps
+touch config/helloworld/revdeps/@default
+
+
+
+start
+sleep 2
+stop
+
+
+
+if ! grep -q "logrotate executing" log/_; then
+	err "logrotate did not run"
+	exit 1
+fi
+
+if ! grep -q "start executing" log/helloworld.log; then
+	err "start did not run"
+	exit 1
+fi
+
+if ! grep -q "run executing" log/helloworld.log; then
+	err "run did not run"
+	exit 1
+fi
+
+if ! grep -q "stop executing" log/helloworld.log; then
+	err "stop did not run"
+	exit 1
+fi
+
+
+
+ok completed
