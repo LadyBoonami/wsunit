@@ -66,6 +66,11 @@ case "$1" in
 		pkill -F "$WSUNIT_STATE_DIR/wsunitd.pid" -USR2
 	;;
 
+	wait)
+		unittest "$1"
+		waitstate "$1" "$2"
+	;;
+
 	"+w")
 		unittest "$2"
 		touch "$WSUNIT_STATE_DIR/wanted/$2"
