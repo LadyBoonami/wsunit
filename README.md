@@ -38,6 +38,7 @@ number of the following:
 - A file named `start-wait-settle`, indicating that the unit should only be
   started after all units that should be brought down have reached the _down_
   state.
+- A directory named `events`, containing executable files.
 
 ### Unit States
 
@@ -98,8 +99,9 @@ diagram below.
 On start (each if applicable):
 
 - The `logrotate` file is called with `WSUNIT_LOG_DIR` as working directory,
-  the first argument will be the name of the unit. If this script fails, the
-  unit returns to the `DOWN` state.
+  stdout and stderr will append to `WSUNIT_LOG_DIR/<name>.log`, the first
+  argument will be the name of the unit. If this script fails, the unit returns
+  to the `DOWN` state.
 - The `start` file is called with the unit's directory in `WSUNIT_CONFIG_DIR` as
   working directory, stdout and stderr will append to
   `WSUNIT_LOG_DIR/<name>.log`. If this script fails, the unit returns to the
@@ -109,7 +111,9 @@ On start (each if applicable):
   `WSUNIT_LOG_DIR/<name>.log`. If this script exits, the unit begins the stop
   process.
 - The `ready` file is called with the unit's directory in `WSUNIT_CONFIG_DIR`
-  as working directory. The unit is marked ready as soon as this script exits.
+  as working directory, stdout and stderr will append to
+  `WSUNIT_LOG_DIR/<name>.log`. The unit is marked ready as soon as this script
+  exits.
 
 On stop (each if applicable):
 
@@ -132,6 +136,32 @@ Details:
 | `IN_RDY_ERR`   | _running_      |
 | `IN_RUN`       | _running_      |
 | `IN_STOP`      | _running_      |
+
+## Events
+
+`wsunit` has a simple event handling system built-in.
+
+An event is triggered by writing its name, to the pipe
+`WSUNIT_STATE_DIR/events`, followed by a newline character. The event name,
+including the terminating newline character, must be less than `PIPE_BUF`
+(>= 512) characters long.
+
+An event handler is an executable file inside the `events/` subdirectory of a
+unit's directory. The name of the executable is the name of the event it is
+called for.
+
+When an event is triggered, the corresponding event handlers of every unit that
+is *ready* are started with the name of the unit and the name of the event as
+parameters. The order of start and termination of event handlers is undefined,
+i.e. it is a mistake to assume any particular handler starts or terminates
+before or after any other handler.
+
+Event handlers are started inside their own process group, and any remaining
+processes are terminated when the main process exits.
+
+The runtime of an event handler is assumed to be negligible. `wsunit` will
+neither delay stopping units until their event handlers terminate, nor handle
+the case where another event is triggered before all event handlers terminate.
 
 ## The `wsunitd` Process
 

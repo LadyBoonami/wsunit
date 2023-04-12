@@ -134,6 +134,10 @@ case "$1" in
 		tail -f "$WSUNIT_LOG_DIR/$2."*
 	;;
 
+	"trigger")
+		echo "$2" >>"$WSUNIT_STATE_DIR/events"
+	;;
+
 	*)
 		# TODO
 		exit 1

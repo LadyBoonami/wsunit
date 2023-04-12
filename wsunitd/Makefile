@@ -8,7 +8,7 @@ CXXFLAGS+=-ggdb -fsanitize=address -fsanitize=undefined -Wall -Wextra -std=c++17
 LDFLAGS=-lboost_filesystem -fsanitize=address -fsanitize=undefined
 
 hdrs=wsunitd.hpp
-srcs=depgraph.cpp main.cpp unit.cpp util.cpp
+srcs=depgraph.cpp epoll.cpp main.cpp unit.cpp util.cpp
 objs=$(srcs:.cpp=.o)
 
 all: wsunitd

@@ -37,7 +37,7 @@ stop
 
 
 
-if ! grep -q "logrotate executing" log/_; then
+if ! grep -q "logrotate executing" log/helloworld.log; then
 	err "logrotate did not run"
 	exit 1
 fi

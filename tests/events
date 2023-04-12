@@ -1,0 +1,30 @@
+#!/bin/bash
+
+mkdir config/ev
+mkdir -p config/ev/revdeps
+touch config/ev/revdeps/@default
+mkdir -p config/ev/events
+
+cat >config/ev/events/test <<-'EOF'
+	#!/bin/bash
+	echo "$@"
+EOF
+chmod +x config/ev/events/test
+
+
+
+start
+sleep 2
+
+echo "test" >>"$WSUNIT_STATE_DIR/events"
+
+sleep 2
+
+stop
+
+if ! grep -q "ev test" log/ev.log; then
+	err "event handler did not run"
+	exit 1
+fi
+
+ok completed

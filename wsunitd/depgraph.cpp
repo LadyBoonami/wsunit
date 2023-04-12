@@ -40,6 +40,12 @@ void depgraph::stop(shared_ptr<unit> u, bool now) {
 	if (now) queue_step();
 }
 
+void depgraph::handle(string event) {
+	for (auto& [n, np] : nodes)
+		if (np->u->get_state() == unit::UP)
+			np->u->handle(event);
+}
+
 
 bool depgraph::contains(const vector<weak_ptr<node>>& v, const string& name) {
 	for (auto& d : v)
@@ -104,7 +110,7 @@ void depgraph::add_new_units(void) {
 		string n = d.path().filename().string();
 		if (nodes.count(n) == 0) {
 			log::debug("add new unit " + n + " to depgraph");
-			nodes.emplace(n, make_shared<depgraph::node>(make_shared<unit>(n)));
+			nodes.emplace(n, make_shared<depgraph::node>(unit::create(n)));
 		}
 	}
 }
@@ -298,7 +304,7 @@ void depgraph::start_step(bool& changed) {
 		string reason = "?";
 
 		if (u) {
-			if (!unit::request_start(u, &reason)) {
+			if (!u->request_start(&reason)) {
 				log::debug("keep unit " + (u ? u->name() : string("?")) + " in start queue: " + reason);
 				return true;
 			}
@@ -322,7 +328,7 @@ void depgraph::stop_step(bool& changed) {
 		string reason = "?";
 
 		if (u) {
-			if (!unit::request_stop(u, &reason)) {
+			if (!u->request_stop(&reason)) {
 				log::debug("keep unit " + (u ? u->name() : string("?")) + " in stop queue: " + reason);
 				return true;
 			}

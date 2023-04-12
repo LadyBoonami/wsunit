@@ -108,18 +108,18 @@ enum unit::state_t unit::get_state(void) { return state; }
 
 
 
-bool unit::request_start(shared_ptr<unit> u, string* reason) {
-	switch (u->state) {
+bool unit::request_start(string* reason) {
+	switch (state) {
 		case DOWN:
-			if (u->blocked()) {
+			if (blocked()) {
 				if (reason) *reason = "unit blocked";
 				return false;
 			}
-			if (!u->can_start(reason))
+			if (!can_start(reason))
 				return false;
 
 			if (reason) *reason = "now starting";
-			step_have_logrot(u);
+			step_have_logrot();
 			return true;
 
 		case IN_LOGROT:
@@ -140,8 +140,8 @@ bool unit::request_start(shared_ptr<unit> u, string* reason) {
 	}
 }
 
-bool unit::request_stop(shared_ptr<unit> u, string* reason) {
-	switch (u->state) {
+bool unit::request_stop(string* reason) {
+	switch (state) {
 		case DOWN:
 			if (reason) *reason = "already stopped";
 			return true;
@@ -153,11 +153,11 @@ bool unit::request_stop(shared_ptr<unit> u, string* reason) {
 			return false;
 
 		case UP:
-			if (!u->can_stop())
+			if (!can_stop())
 				return false;
 
 			if (reason) *reason = "now stopping";
-			step_active_run(u);
+			step_active_run();
 			return true;
 
 		case IN_RDY_ERR:
@@ -165,6 +165,31 @@ bool unit::request_stop(shared_ptr<unit> u, string* reason) {
 		case IN_STOP:
 			if (reason) *reason = "already stopping";
 			return true;
+	}
+}
+
+void unit::handle(string event) {
+	auto p = dir() / "events" / event;
+	if (is_regular_file(p) && access(p.c_str(), X_OK) == 0) {
+		pid_t pid = fork_();
+		if (pid == 0) {
+			if (chdir(dir().c_str()) == -1) {
+				log::err("failed to chdir to " + dir().string() + ": " + strerror(errno));
+				exit(1);
+			}
+			pid_t sid = setsid();
+			if (sid == -1) {
+				log::err(string("failed to run setsid: ") + strerror(errno));
+				exit(1);
+			}
+			log::debug("fork events/" + event + " as pid " + to_string(getpid()) + " sid " + to_string(sid));
+			output_logfile(name() + ".log");
+			log::note("launch ./events/" + event);
+			execl(p.c_str(), p.c_str(), name().c_str(), event.c_str(), (char*) NULL);
+			exit(1);
+		}
+		else if (pid > 0)
+			term_add(pid, on_event_exit, shared_from_this());
 	}
 }
 
@@ -182,19 +207,19 @@ void unit::set_state(state_t state) {
 	this->state = state;
 }
 
-void unit::step_have_logrot (shared_ptr<unit> u) { if (u->has_logrot_script()) fork_logrot_script(u); else step_have_start  (u); }
-void unit::step_have_start  (shared_ptr<unit> u) { if (u->has_start_script ()) fork_start_script (u); else step_have_run    (u); }
-void unit::step_have_run    (shared_ptr<unit> u) { if (u->has_run_script   ()) fork_run_script   (u); else step_have_rdy    (u); }
-void unit::step_have_rdy    (shared_ptr<unit> u) { if (u->has_rdy_script   ()) fork_rdy_script   (u); else u->set_state(UP)    ; }
-void unit::step_active_rdy  (shared_ptr<unit> u) { if (u->rdy_pid != 0       ) kill_rdy_script   (u); else step_have_stop   (u); }
-void unit::step_active_run  (shared_ptr<unit> u) { if (u->run_pid != 0       ) kill_run_script   (u); else step_have_stop   (u); }
-void unit::step_have_stop   (shared_ptr<unit> u) { if (u->has_stop_script  ()) fork_stop_script  (u); else step_have_restart(u); }
+void unit::step_have_logrot (void) { if (has_logrot_script()) fork_logrot_script(); else step_have_start  (); }
+void unit::step_have_start  (void) { if (has_start_script ()) fork_start_script (); else step_have_run    (); }
+void unit::step_have_run    (void) { if (has_run_script   ()) fork_run_script   (); else step_have_rdy    (); }
+void unit::step_have_rdy    (void) { if (has_rdy_script   ()) fork_rdy_script   (); else set_state(UP)      ; }
+void unit::step_active_rdy  (void) { if (rdy_pid != 0       ) kill_rdy_script   (); else step_have_stop   (); }
+void unit::step_active_run  (void) { if (run_pid != 0       ) kill_run_script   (); else step_have_stop   (); }
+void unit::step_have_stop   (void) { if (has_stop_script  ()) fork_stop_script  (); else step_have_restart(); }
 
-void unit::step_have_restart(shared_ptr<unit> u) { if (u->restart() && u->needed() && !u->masked()) step_have_logrot(u); else u->set_state(DOWN); }
+void unit::step_have_restart(void) { if (restart() && needed() && !masked()) step_have_logrot(); else set_state(DOWN); }
 
-void unit::fork_logrot_script(shared_ptr<unit> u) {
-	assert(u->has_logrot_script());
-	log::note(u->term_name() + ": exec logrotate script");
+void unit::fork_logrot_script(void) {
+	assert(has_logrot_script());
+	log::note(term_name() + ": exec logrotate script");
 	pid_t pid = fork_();
 	if (pid == 0) {
 		if (chdir(logdir.c_str()) == -1) {
@@ -206,25 +231,27 @@ void unit::fork_logrot_script(shared_ptr<unit> u) {
 			log::err(string("failed to run setsid: ") + strerror(errno));
 			exit(1);
 		}
-		path p = is_regular_file(u->dir() / "logrotate") ? (u->dir() / "logrotate") : (confdir / "logrotate");
+		path p = is_regular_file(dir() / "logrotate") ? (dir() / "logrotate") : (confdir / "logrotate");
 		log::debug(string("fork logrotate as pid ") + to_string(getpid()) + " sid " + to_string(sid));
-		execl(p.c_str(), p.c_str(), u->name().c_str(), (char*) NULL);
+		output_logfile(name() + ".log");
+		log::note("launch ./logrotate");
+		execl(p.c_str(), p.c_str(), name().c_str(), (char*) NULL);
 		exit(1);
 	}
 	else if (pid > 0) {
-		term_add(pid, on_logrot_exit, u);
-		u->logrot_pid = pid;
-		u->set_state(IN_LOGROT);
+		term_add(pid, on_logrot_exit, shared_from_this());
+		logrot_pid = pid;
+		set_state(IN_LOGROT);
 	}
 }
 
-void unit::fork_start_script(shared_ptr<unit> u) {
-	assert(u->has_start_script());
-	log::note(u->term_name() + ": exec start script");
+void unit::fork_start_script(void) {
+	assert(has_start_script());
+	log::note(term_name() + ": exec start script");
 	pid_t pid = fork_();
 	if (pid == 0) {
-		if (chdir(u->dir().c_str()) == -1) {
-			log::err("failed to chdir to " + u->dir().string() + ": " + strerror(errno));
+		if (chdir(dir().c_str()) == -1) {
+			log::err("failed to chdir to " + dir().string() + ": " + strerror(errno));
 			exit(1);
 		}
 		pid_t sid = setsid();
@@ -233,24 +260,25 @@ void unit::fork_start_script(shared_ptr<unit> u) {
 			exit(1);
 		}
 		log::debug(string("fork start as pid ") + to_string(getpid()) + " sid " + to_string(sid));
-		output_logfile(u->name() + ".log");
-		execl((u->dir() / "start").c_str(), (u->dir() / "start").c_str(), (char*) NULL);
+		output_logfile(name() + ".log");
+		log::note("launch ./start");
+		execl((dir() / "start").c_str(), (dir() / "start").c_str(), (char*) NULL);
 		exit(1);
 	}
 	else if (pid > 0) {
-		term_add(pid, on_start_exit, u);
-		u->start_pid = pid;
-		u->set_state(IN_START);
+		term_add(pid, on_start_exit, shared_from_this());
+		start_pid = pid;
+		set_state(IN_START);
 	}
 }
 
-void unit::fork_run_script(shared_ptr<unit> u) {
-	assert(u->has_run_script());
-	log::note(u->term_name() + ": exec run script");
+void unit::fork_run_script(void) {
+	assert(has_run_script());
+	log::note(term_name() + ": exec run script");
 	pid_t pid = fork_();
 	if (pid == 0) {
-		if (chdir(u->dir().c_str()) == -1) {
-			log::err("failed to chdir to " + u->dir().string() + ": " + strerror(errno));
+		if (chdir(dir().c_str()) == -1) {
+			log::err("failed to chdir to " + dir().string() + ": " + strerror(errno));
 			exit(1);
 		}
 		pid_t sid = setsid();
@@ -259,24 +287,25 @@ void unit::fork_run_script(shared_ptr<unit> u) {
 			exit(1);
 		}
 		log::debug(string("fork run as pid ") + to_string(getpid()) + " sid " + to_string(sid));
-		output_logfile(u->name() + ".log");
-		execl((u->dir() / "run").c_str(), (u->dir() / "run").c_str(), (char*) NULL);
+		output_logfile(name() + ".log");
+		log::note("launch ./run");
+		execl((dir() / "run").c_str(), (dir() / "run").c_str(), (char*) NULL);
 		exit(1);
 	}
 	else if (pid > 0) {
-		term_add(pid, on_run_exit, u);
-		u->run_pid = pid;
-		step_have_rdy(u);
+		term_add(pid, on_run_exit, shared_from_this());
+		run_pid = pid;
+		step_have_rdy();
 	}
 }
 
-void unit::fork_rdy_script(shared_ptr<unit> u) {
-	assert(u->has_rdy_script());
-	log::note(u->term_name() + ": exec ready script");
+void unit::fork_rdy_script(void) {
+	assert(has_rdy_script());
+	log::note(term_name() + ": exec ready script");
 	pid_t pid = fork_();
 	if (pid == 0) {
-		if (chdir(u->dir().c_str()) == -1) {
-			log::err("failed to chdir to " + u->dir().string() + ": " + strerror(errno));
+		if (chdir(dir().c_str()) == -1) {
+			log::err("failed to chdir to " + dir().string() + ": " + strerror(errno));
 			exit(1);
 		}
 		pid_t sid = setsid();
@@ -285,23 +314,25 @@ void unit::fork_rdy_script(shared_ptr<unit> u) {
 			exit(1);
 		}
 		log::debug(string("fork ready as pid ") + to_string(getpid()) + " sid " + to_string(sid));
-		execl((u->dir() / "ready").c_str(), (u->dir() / "ready").c_str(), (char*) NULL);
+		output_logfile(name() + ".log");
+		log::note("launch ./ready");
+		execl((dir() / "ready").c_str(), (dir() / "ready").c_str(), (char*) NULL);
 		exit(1);
 	}
 	else if (pid > 0) {
-		term_add(pid, on_rdy_exit, u);
-		u->rdy_pid = pid;
-		u->set_state(IN_RDY);
+		term_add(pid, on_rdy_exit, shared_from_this());
+		rdy_pid = pid;
+		set_state(IN_RDY);
 	}
 }
 
-void unit::fork_stop_script(shared_ptr<unit> u) {
-	assert(u->has_stop_script());
-	log::note(u->term_name() + ": exec stop script");
+void unit::fork_stop_script(void) {
+	assert(has_stop_script());
+	log::note(term_name() + ": exec stop script");
 	pid_t pid = fork_();
 	if (pid == 0) {
-		if (chdir(u->dir().c_str()) == -1) {
-			log::err("failed to chdir to " + u->dir().string() + ": " + strerror(errno));
+		if (chdir(dir().c_str()) == -1) {
+			log::err("failed to chdir to " + dir().string() + ": " + strerror(errno));
 			exit(1);
 		}
 		pid_t sid = setsid();
@@ -310,29 +341,30 @@ void unit::fork_stop_script(shared_ptr<unit> u) {
 			exit(1);
 		}
 		log::debug(string("fork stop as pid ") + to_string(getpid()) + " sid " + to_string(sid));
-		output_logfile(u->name() + ".log");
-		execl((u->dir() / "stop").c_str(), (u->dir() / "stop").c_str(), (char*) NULL);
+		output_logfile(name() + ".log");
+		log::note("launch ./stop");
+		execl((dir() / "stop").c_str(), (dir() / "stop").c_str(), (char*) NULL);
 		exit(1);
 	}
 	else if (pid > 0) {
-		term_add(pid, on_stop_exit, u);
-		u->stop_pid = pid;
-		u->set_state(IN_STOP);
+		term_add(pid, on_stop_exit, shared_from_this());
+		stop_pid = pid;
+		set_state(IN_STOP);
 	}
 }
 
-void unit::kill_rdy_script(shared_ptr<unit> u) {
-	assert(u->rdy_pid);
-	log::debug(u->term_name() + ": kill(" + to_string(u->rdy_pid) + ", " + signal_string(SIGTERM) + ")");
-	kill(u->rdy_pid, SIGTERM);
-	u->set_state(IN_RDY_ERR);
+void unit::kill_rdy_script(void) {
+	assert(rdy_pid);
+	log::debug(term_name() + ": kill(" + to_string(rdy_pid) + ", " + signal_string(SIGTERM) + ")");
+	kill(rdy_pid, SIGTERM);
+	set_state(IN_RDY_ERR);
 }
 
-void unit::kill_run_script(shared_ptr<unit> u) {
-	assert(u->run_pid);
-	log::debug(u->term_name() + ": kill(" + to_string(u->run_pid) + ", " + signal_string(SIGTERM) + ")");
-	kill(u->run_pid, SIGTERM);
-	u->set_state(IN_RUN);
+void unit::kill_run_script(void) {
+	assert(run_pid);
+	log::debug(term_name() + ": kill(" + to_string(run_pid) + ", " + signal_string(SIGTERM) + ")");
+	kill(run_pid, SIGTERM);
+	set_state(IN_RUN);
 }
 
 #pragma GCC diagnostic push
@@ -346,7 +378,7 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 		u->logrot_pid = 0;
 
 		if (status_ok(u, "logrotate", status))
-			step_have_start(u);
+			u->step_have_start();
 		else
 			u->set_state(DOWN);
 
@@ -361,7 +393,7 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 		u->start_pid = 0;
 
 		if (status_ok(u, "start", status))
-			step_have_run(u);
+			u->step_have_run();
 		else
 			u->set_state(DOWN);
 
@@ -378,12 +410,12 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 				if (status_ok(u, "ready", status))
 					u->set_state(UP);
 				else
-					step_active_run(u);
+					u->step_active_run();
 			break;
 
 			case IN_RDY_ERR:
 				status_ok(u, "ready", status);
-				step_have_stop(u);
+				u->step_have_stop();
 			break;
 
 			default:
@@ -401,13 +433,13 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 		switch (u->state) {
 			case IN_RDY:
 				status_ok(u, "run", status);
-				step_active_rdy(u);
+				u->step_active_rdy();
 			break;
 
 			case UP:
 			case IN_RUN:
 				status_ok(u, "run", status);
-				step_have_stop(u);
+				u->step_have_stop();
 			break;
 
 			default:
@@ -425,9 +457,14 @@ void unit::kill_run_script(shared_ptr<unit> u) {
 		u->stop_pid = 0;
 
 		status_ok(u, "stop", status);
-		step_have_restart(u);
+		u->step_have_restart();
 
 		depgraph::queue_step();
+	}
+
+	void unit::on_event_exit(pid_t pid, shared_ptr<unit> u, int status) {
+		log::debug(u->term_name() + ": kill(-" + to_string(pid) + ", " + signal_string(SIGTERM) + ")");
+		kill(-pid, SIGTERM);
 	}
 
 #pragma GCC diagnostic pop

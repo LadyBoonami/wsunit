@@ -17,9 +17,12 @@ extern path statedir;
 extern path logdir;
 extern bool in_shutdown;
 
-class unit {
-	public:
+class unit : public enable_shared_from_this<unit> {
+	private:
 		unit(string name);
+
+	public:
+		static shared_ptr<unit> create(string name) { return shared_ptr<unit>(new unit(name)); }
 
 		string name     (void);
 		string term_name(void);
@@ -47,8 +50,10 @@ class unit {
 		static string state_descr     (state_t state);
 		static string term_state_descr(state_t state);
 
-		static bool request_start(shared_ptr<unit> u, string* reason = 0);
-		static bool request_stop (shared_ptr<unit> u, string* reason = 0);
+		bool request_start(string* reason = 0);
+		bool request_stop (string* reason = 0);
+
+		void handle(string event);
 
 	private:
 		const string name_;
@@ -63,29 +68,30 @@ class unit {
 		void set_state(state_t state);
 
 	private:
-		static void step_have_logrot (shared_ptr<unit> u);
-		static void step_have_start  (shared_ptr<unit> u);
-		static void step_have_run    (shared_ptr<unit> u);
-		static void step_have_rdy    (shared_ptr<unit> u);
-		static void step_active_rdy  (shared_ptr<unit> u);
-		static void step_active_run  (shared_ptr<unit> u);
-		static void step_have_stop   (shared_ptr<unit> u);
-		static void step_have_restart(shared_ptr<unit> u);
+		void step_have_logrot (void);
+		void step_have_start  (void);
+		void step_have_run    (void);
+		void step_have_rdy    (void);
+		void step_active_rdy  (void);
+		void step_active_run  (void);
+		void step_have_stop   (void);
+		void step_have_restart(void);
 
-		static void fork_logrot_script(shared_ptr<unit> u);
-		static void fork_start_script (shared_ptr<unit> u);
-		static void fork_run_script   (shared_ptr<unit> u);
-		static void fork_rdy_script   (shared_ptr<unit> u);
-		static void fork_stop_script  (shared_ptr<unit> u);
+		void fork_logrot_script(void);
+		void fork_start_script (void);
+		void fork_run_script   (void);
+		void fork_rdy_script   (void);
+		void fork_stop_script  (void);
 
-		static void kill_rdy_script(shared_ptr<unit> u);
-		static void kill_run_script(shared_ptr<unit> u);
+		void kill_rdy_script(void);
+		void kill_run_script(void);
 
 		static void on_logrot_exit(pid_t pid, shared_ptr<unit> u, int status);
 		static void on_start_exit (pid_t pid, shared_ptr<unit> u, int status);
 		static void on_rdy_exit   (pid_t pid, shared_ptr<unit> u, int status);
 		static void on_run_exit   (pid_t pid, shared_ptr<unit> u, int status);
 		static void on_stop_exit  (pid_t pid, shared_ptr<unit> u, int status);
+		static void on_event_exit (pid_t pid, shared_ptr<unit> u, int status);
 };
 
 class depgraph {
@@ -95,6 +101,8 @@ class depgraph {
 
 		static void start(shared_ptr<unit> u, bool now = true);
 		static void stop (shared_ptr<unit> u, bool now = true);
+
+		static void handle(string event);
 
 		static void queue_step(void);
 		static bool is_settled(string* reason = 0);
@@ -174,6 +182,18 @@ void output_logfile(const string name);
 bool status_ok(shared_ptr<unit> u, const string scriptname, int status);
 
 void mkdirs(void);
-void signal_loop(void);
+
+class epoll_handler {
+	public:
+		virtual void handle(void) = 0;
+		virtual ~epoll_handler(void) { close(fd); }
+
+		int getfd(void) { return fd; }
+
+	protected:
+		int fd;
+};
+
+void main_loop(void);
 void waitall(void);
-int main(int argc, char** argv);
+int  main(int argc, char** argv);
