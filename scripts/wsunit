@@ -138,6 +138,11 @@ case "$1" in
 		echo "$2" >>"$WSUNIT_STATE_DIR/events"
 	;;
 
+	"signal")
+		unittest "$3"
+		pkill --signal "$2" --pidfile "$WSUNIT_STATE_DIR/pid/$3"
+	;;
+
 	*)
 		# TODO
 		exit 1
