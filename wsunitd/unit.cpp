@@ -295,6 +295,7 @@ void unit::fork_run_script(void) {
 	else if (pid > 0) {
 		term_add(pid, on_run_exit, shared_from_this());
 		run_pid = pid;
+		ofstream(statedir / "pid" / name()) << pid << endl;
 		step_have_rdy();
 	}
 }
@@ -429,6 +430,7 @@ void unit::kill_run_script(void) {
 		log::debug(u->term_name() + ": kill(-" + to_string(u->run_pid) + ", " + signal_string(SIGTERM) + ")");
 		kill(-u->run_pid, SIGTERM);
 		u->run_pid = 0;
+		remove(statedir / "pid" / u->name());
 
 		switch (u->state) {
 			case IN_RDY:

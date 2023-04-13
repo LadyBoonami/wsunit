@@ -20,6 +20,7 @@ void mkdirs(void) {
 	if (!is_directory(statedir / "wanted"  )) create_directories(statedir / "wanted"  );
 	if (!is_directory(statedir / "masked"  )) create_directories(statedir / "masked"  );
 	if (!is_directory(statedir / "state"   )) create_directories(statedir / "state"   );
+	if (!is_directory(statedir / "pid"     )) create_directories(statedir / "pid"     );
 	if (!is_directory(logdir               )) create_directories(logdir               );
 }
 
