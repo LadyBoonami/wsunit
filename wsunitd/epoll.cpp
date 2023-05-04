@@ -129,6 +129,14 @@ class event_fifo_handler : public epoll_handler {
 					return;
 				}
 
+				if (buf[pos] == '/') {
+					log::err("event contains illegal characters, discard ...");
+					pos = 0;
+					do {
+						if (read(fd, buf, 1) <= 0) break;
+					} while (*buf != '\n');
+				}
+
 				++pos;
 				log::debug(string("onto next character, now at ") + to_string(pos));
 

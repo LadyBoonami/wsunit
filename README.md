@@ -144,7 +144,7 @@ Details:
 An event is triggered by writing its name, to the pipe
 `WSUNIT_STATE_DIR/events`, followed by a newline character. The event name,
 including the terminating newline character, must be less than `PIPE_BUF`
-(>= 512) characters long.
+(>= 512) characters long, and may not contain the `/` character.
 
 An event handler is an executable file inside the `events/` subdirectory of a
 unit's directory. The name of the executable is the name of the event it is
