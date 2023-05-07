@@ -65,9 +65,7 @@ bool unit::can_stop(string* reason) {
 }
 
 bool unit::restart(void) {
-//	return exists(dir() / "restart");
-	return false;
-	// TODO
+	return exists(dir() / "restart");
 }
 
 bool unit::need_settle(void) {
