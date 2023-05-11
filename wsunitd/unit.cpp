@@ -213,7 +213,7 @@ void unit::step_active_rdy  (void) { if (rdy_pid != 0       ) kill_rdy_script   
 void unit::step_active_run  (void) { if (run_pid != 0       ) kill_run_script   (); else step_have_stop   (); }
 void unit::step_have_stop   (void) { if (has_stop_script  ()) fork_stop_script  (); else step_have_restart(); }
 
-void unit::step_have_restart(void) { if (restart() && needed() && !masked()) step_have_logrot(); else set_state(DOWN); }
+void unit::step_have_restart(void) { if (restart() && needed() && !blocked()) step_have_logrot(); else set_state(DOWN); }
 
 void unit::fork_logrot_script(void) {
 	assert(has_logrot_script());
