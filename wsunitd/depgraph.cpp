@@ -348,12 +348,12 @@ void depgraph::write_state(void) {
 	for (auto& [n, np] : nodes) {
 		auto rf = statedir / "running" / np->u->name();
 
-		if ( np->u->running() && !is_regular_file(rf)) ofstream(rf).flush();
+		if ( np->u->running() && !is_regular_file(rf)) std::ofstream(rf).flush();
 		if (!np->u->running() &&  is_regular_file(rf)) remove(rf);
 
 		rf = statedir / "ready" / np->u->name();
 
-		if ( np->u->ready() && !is_regular_file(rf)) ofstream(rf).flush();
+		if ( np->u->ready() && !is_regular_file(rf)) std::ofstream(rf).flush();
 		if (!np->u->ready() &&  is_regular_file(rf)) remove(rf);
 
 		// TODO: pid file?

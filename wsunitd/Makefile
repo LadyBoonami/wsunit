@@ -1,8 +1,10 @@
-#CXX=g++
-#CXXFLAGS=-fmax-errors=1 -Og
-
-CXX=clang++
-CXXFLAGS=-ferror-limit=1 -O0
+ifeq ($(CXX),g++)
+    CXXFLAGS=-fmax-errors=1 -Og
+else ifeq ($CXX),clang++)
+    CXXFLAGS=-ferror-limit=1 -O0
+else
+    CXXFLAGS=
+endif
 
 CXXFLAGS+=-ggdb -fsanitize=address -fsanitize=undefined -Wall -Wextra -std=c++17
 LDFLAGS=-lboost_filesystem -fsanitize=address -fsanitize=undefined

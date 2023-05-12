@@ -7,7 +7,7 @@
 
 
 unit::unit(string name) : name_(name), state(DOWN), logrot_pid(0), start_pid(0), rdy_pid(0), run_pid(0), stop_pid(0) {
-	ofstream(statedir / "state" / name_) << "down" << endl;
+	std::ofstream(statedir / "state" / name_) << "down" << endl;
 }
 
 string unit::name     (void) { return              name_            ; }
@@ -136,6 +136,7 @@ bool unit::request_start(string* reason) {
 			if (reason) *reason = "currently stopping";
 			return false;
 	}
+	assert(false);
 }
 
 bool unit::request_stop(string* reason) {
@@ -164,6 +165,7 @@ bool unit::request_stop(string* reason) {
 			if (reason) *reason = "already stopping";
 			return true;
 	}
+	assert(false);
 }
 
 void unit::handle(string event) {
@@ -199,7 +201,7 @@ void unit::set_state(state_t state) {
 
 	if (old_state != new_state) {
 		log::note(term_name() + ": " + term_state_descr(this->state) + " -> " + term_state_descr(state));
-		ofstream(statedir / "state" / name_) << new_state << endl;
+		std::ofstream(statedir / "state" / name_) << new_state << endl;
 	}
 
 	this->state = state;
@@ -293,7 +295,7 @@ void unit::fork_run_script(void) {
 	else if (pid > 0) {
 		term_add(pid, on_run_exit, shared_from_this());
 		run_pid = pid;
-		ofstream(statedir / "pid" / name()) << pid << endl;
+		std::ofstream(statedir / "pid" / name()) << pid << endl;
 		step_have_rdy();
 	}
 }

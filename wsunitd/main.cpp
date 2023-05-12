@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
 	output_logfile("_");
 
 	depgraph::refresh();
-	ofstream(statedir / "wsunitd.pid") << getpid() << endl;
+	std::ofstream(statedir / "wsunitd.pid") << getpid() << endl;
 	depgraph::start_stop_units();
 
 	main_loop();

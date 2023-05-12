@@ -69,7 +69,14 @@ bool status_ok(shared_ptr<unit> u, const string scriptname, int status) {
 }
 
 string signal_string(int signum) {
-	return string("SIG") + sigabbrev_np(signum) + " (" + to_string(signum) + ")";
+	const char* name =
+	#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 32
+		sys_siglist[signum];
+	#else
+		sigabbrev_np(signum);
+	#endif
+
+	return string("SIG") + name + " (" + to_string(signum) + ")";
 }
 
 map<pid_t, pair<term_handler, shared_ptr<unit>>> term_map;
