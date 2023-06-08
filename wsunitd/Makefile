@@ -1,13 +1,28 @@
 ifeq ($(CXX),g++)
-    CXXFLAGS=-fmax-errors=1 -Og
+    CXXFLAGS=-fmax-errors=1
+    ifneq ($(DEBUG),)
+        CXXFLAGS+=-Og
+    else
+        CXXFLAGS+=-O2
+    endif
 else ifeq ($CXX),clang++)
-    CXXFLAGS=-ferror-limit=1 -O0
+    CXXFLAGS=-ferror-limit=1
+    ifneq ($(DEBUG),)
+        CXXFLAGS+=-O0
+    else
+        CXXFLAGS+=-O3
+    endif
 else
     CXXFLAGS=
 endif
 
-CXXFLAGS+=-ggdb -fsanitize=address -fsanitize=undefined -Wall -Wextra -std=c++17
-LDFLAGS=-lboost_filesystem -fsanitize=address -fsanitize=undefined
+CXXFLAGS+=-Wall -Wextra -std=c++17
+LDFLAGS=-lboost_filesystem
+
+ifneq ($(DEBUG),)
+    CXXFLAGS+=-ggdb -fsanitize=address -fsanitize=undefined
+    LDFLAGS=-fsanitize=address -fsanitize=undefined
+endif
 
 hdrs=wsunitd.hpp
 srcs=depgraph.cpp epoll.cpp main.cpp unit.cpp util.cpp
@@ -15,7 +30,7 @@ objs=$(srcs:.cpp=.o)
 
 all: wsunitd
 wsunitd: $(objs)
-	$(CXX) $(LDFLAGS) $^ -o $@
+	$(CXX) $^ $(LDFLAGS) -o $@
 
 $(objs): %.o: %.cpp $(hdrs)
 
