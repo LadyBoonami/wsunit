@@ -24,11 +24,11 @@ case "$1" in
 		( cd "$WSUNIT_STATE_DIR/state" && grep -H "" * )
 	;;
 
-	graph)
-		(
-			cd "$WSUNIT_CONFIG_DIR"
-			echo "digraph {"
-			for d in *; do
+	dot)
+		cd "$WSUNIT_CONFIG_DIR"
+		echo "digraph {"
+		for d in *; do
+			if [ -d "$d" ]; then
 				state="$(cat "$WSUNIT_STATE_DIR/state/$d")"
 				case "$state" in
 					down)    color=red    ;;
@@ -49,9 +49,9 @@ case "$1" in
 				echo "\"$d\" [shape=\"$shape\", color=\"$color\"];"
 				find "$d/deps" -type f -printf "\"$d\" -> \"%f\" [dir=\"both\", arrowhead=\"empty\", arrowtail=\"inv\"];\\n" 2>/dev/null
 				find "$d/revdeps" -type f -printf "\"%f\" -> \"$d\" [dir=\"both\", arrowhead=\"normal\", arrowtail=\"invempty\"];\\n" 2>/dev/null
-			done
-			echo "}"
-		) | dot -Tx11
+			fi
+		done
+		echo "}"
 	;;
 
 	shutdown)
