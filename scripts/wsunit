@@ -174,11 +174,11 @@ while [ -n "$1" ]; do
 		restart)
 			unittest "$2"
 
-			case "$(cat "$WSUNIT_STATE_DIR/$2")" in
+			case "$(cat "$WSUNIT_STATE_DIR/state/$2")" in
 				running) : ;;
 				ready)   : ;;
 				*)
-					echo "unit $2 is in state $(cat "$WSUNIT_STATE_DIR/$2"), cannot restart" >&2
+					echo "unit $2 is in state $(cat "$WSUNIT_STATE_DIR/state/$2"), cannot restart" >&2
 					exit 1
 				;;
 			esac
@@ -292,3 +292,5 @@ while [ -n "$1" ]; do
 	esac
 	shift
 done
+
+true
