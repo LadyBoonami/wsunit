@@ -203,7 +203,8 @@ to run `wsunitd` inside a dbus session.
 
 ### `wsunit`
 
-TODO
+The `wsunit` script can be used to interact with a running `wsunitd` instance.
+Run `wsunit help` for more info.
 
 ### `logmgr`
 

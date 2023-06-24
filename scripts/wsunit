@@ -1,6 +1,23 @@
-#!/bin/bash
+#!/bin/bash -e
 
-#TODO: test config, state
+case "$(id -u)" in
+	0)
+		test -n "$WSUNIT_CONFIG_DIR" || export WSUNIT_CONFIG_DIR="/etc/wsunit"
+		test -n "$WSUNIT_STATE_DIR"  || export WSUNIT_STATE_DIR="/run/wsunit"
+		test -n "$WSUNIT_LOG_DIR"    || export WSUNIT_LOG_DIR="/var/log/wsunit"
+	;;
+
+	*)
+		test -n "$WSUNIT_CONFIG_DIR" || export WSUNIT_CONFIG_DIR="${XDG_CONFIG_HOME:-$home/.config}/wsunit"
+		test -n "$WSUNIT_STATE_DIR"  || export WSUNIT_STATE_DIR="$XDG_RUNTIME_DIR/wsunit"
+		test -n "$WSUNIT_LOG_DIR"    || export WSUNIT_LOG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/wsunit/log"
+	;;
+esac
+
+if ! pkill -0 -F "$WSUNIT_STATE_DIR/wsunitd.pid" >/dev/null 2>&1; then
+	echo "error: wsunitd not running" >&2
+	exit 1
+fi
 
 function unittest() {
 	if [ ! -e "$WSUNIT_CONFIG_DIR/$1" ]; then
@@ -19,132 +36,259 @@ function waitstate() {
 	done
 }
 
-case "$1" in
-	status)
-		( cd "$WSUNIT_STATE_DIR/state" && grep -H "" * )
-	;;
+function usage() {
+	cat <<'EOF'
+Usage: wsunit <command> <...>
 
-	dot)
-		cd "$WSUNIT_CONFIG_DIR"
-		echo "digraph {"
-		for d in *; do
-			if [ -d "$d" ]; then
-				state="$(cat "$WSUNIT_STATE_DIR/state/$d")"
-				case "$state" in
-					down)    color=red    ;;
-					running) color=yellow ;;
-					ready)   color=green  ;;
-				esac
+This script is a helper to interact with a running  wsunitd  process. It picks
+up the WSUNIT_*_DIR paths from the environment if given, but defaults to the
+system paths if called as root, and the user paths otherwise.
 
-				shape="ellipse"
-				if [ -e "$WSUNIT_STATE_DIR/wanted/$d" ] && [ -e "$WSUNIT_STATE_DIR/masked/$d" ]; then
-					shape="diamond"
-				elif [ -e "$WSUNIT_STATE_DIR/wanted/$d" ]; then
-					shape="triangle"
-				elif [ -e "$WSUNIT_STATE_DIR/masked/$d" ]; then
-					shape="invtriangle"
+Commands:
+
+    bump:
+        Send SIGUSR1 to wsunitd. Recalculates the set of needed units according
+        to masked and wanted units, and starts and stops units as needed. Does
+        not refresh the dependency graph (use  refresh  for that).
+
+    dot:
+        Generate a dot graph of all units. The output reflects the current
+        configuration as defined by the file system, not necessarily the view of
+        the wsunitd process.
+
+    help:
+        Show this help.
+
+    logs <unit>:
+        Watch the logs of the given unit (tail -f).
+
+    refresh:
+        Send SIGUSR2 to wsunitd. Recalculates the dependency graph, then
+        performs the actions described in  bump .
+
+    restart <unit>:
+        Perform the equivalent of
+
+          +m <unit> wait <unit> down -m <unit> wait <unit> up
+
+        Fails if the unit is not currently running or ready.
+
+    signal <sig> <unit>:
+        Deliver the given signal to the given unit.
+
+    shutdown:
+        Send SIGTERM to wsunitd, which switches the active unit to @shutdown,
+        and exits once that unit is up and all unneeded units are down. wsunit
+        does not wait for @shutdown to be up, this can be achieved by appending
+
+            wait @shutdown up
+
+    status:
+        Print the status of each unit.
+
+    trigger <event>:
+        Trigger the given event.
+
+    wait <unit> <state>:
+        Wait until the given unit is in the given state.
+
+The following commands change the configuration, but do not refresh the state of
+wsunitd itself. Append a  bump  or  refresh  command if you want them to take
+effect immediately.
+
+    +d <unit1> <unit2>:
+        Make unit1 depend on unit2.
+
+    -d <unit1> <unit2>:
+        Make unit1 not depend on unit2.
+
+    +m <unit>:
+        Mark the unit as masked.
+
+    -m <unit>:
+        Unmark the unit as masked.
+
+    +r <unit1> <unit2>:
+        Make unit1 reverse-depend on unit2.
+
+    -r <unit1> <unit2>:
+        Make unit2 reverse-depend on unit1.
+
+    +w <unit>:
+        Mark the unit as wanted.
+
+    -w <unit>:
+        Unmark the unit as wanted.
+EOF
+}
+
+while [ -n "$1" ]; do
+	case "$1" in
+		bump)
+			bump
+		;;
+
+		dot)
+			cd "$WSUNIT_CONFIG_DIR"
+			echo "digraph {"
+			for d in *; do
+				if [ -d "$d" ]; then
+					state="$(cat "$WSUNIT_STATE_DIR/state/$d")"
+					case "$state" in
+						down)    color=red    ;;
+						running) color=yellow ;;
+						ready)   color=green  ;;
+					esac
+
+					shape="ellipse"
+					if [ -e "$WSUNIT_STATE_DIR/wanted/$d" ] && [ -e "$WSUNIT_STATE_DIR/masked/$d" ]; then
+						shape="diamond"
+					elif [ -e "$WSUNIT_STATE_DIR/wanted/$d" ]; then
+						shape="triangle"
+					elif [ -e "$WSUNIT_STATE_DIR/masked/$d" ]; then
+						shape="invtriangle"
+					fi
+
+
+					echo "\"$d\" [shape=\"$shape\", color=\"$color\"];"
+					find "$d/deps" -type f -printf "\"$d\" -> \"%f\" [dir=\"both\", arrowhead=\"empty\", arrowtail=\"inv\"];\\n" 2>/dev/null
+					find "$d/revdeps" -type f -printf "\"%f\" -> \"$d\" [dir=\"both\", arrowhead=\"normal\", arrowtail=\"invempty\"];\\n" 2>/dev/null
 				fi
+			done
+			echo "}"
+		;;
 
+		help)
+			usage
+		;;
 
-				echo "\"$d\" [shape=\"$shape\", color=\"$color\"];"
-				find "$d/deps" -type f -printf "\"$d\" -> \"%f\" [dir=\"both\", arrowhead=\"empty\", arrowtail=\"inv\"];\\n" 2>/dev/null
-				find "$d/revdeps" -type f -printf "\"%f\" -> \"$d\" [dir=\"both\", arrowhead=\"normal\", arrowtail=\"invempty\"];\\n" 2>/dev/null
+		logs)
+			tail -f "$WSUNIT_LOG_DIR/$2."*
+			shift
+		;;
+
+		refresh)
+			pkill -F "$WSUNIT_STATE_DIR/wsunitd.pid" -USR2
+		;;
+
+		restart)
+			unittest "$2"
+
+			case "$(cat "$WSUNIT_STATE_DIR/$2")" in
+				running) : ;;
+				ready)   : ;;
+				*)
+					echo "unit $2 is in state $(cat "$WSUNIT_STATE_DIR/$2"), cannot restart" >&2
+					exit 1
+				;;
+			esac
+
+			touch "$WSUNIT_STATE_DIR/masked/$2"
+			bump
+			waitstate "$2" "down"
+
+			rm "$WSUNIT_STATE_DIR/masked/$2"
+			bump
+			waitstate "$2" "ready"
+
+			shift
+		;;
+
+		signal)
+			unittest "$3"
+			pkill --signal "$2" --pidfile "$WSUNIT_STATE_DIR/pid/$3"
+			shift 2
+		;;
+
+		shutdown)
+			pkill -F "$WSUNIT_STATE_DIR/wsunitd.pid" -TERM
+		;;
+
+		status)
+			output="$( cd "$WSUNIT_STATE_DIR/state" && grep --color=auto -H ^ *)"
+			if [ -t 1 ]; then
+				output="$( cd "$WSUNIT_STATE_DIR/state" && grep --color=always -H ^ *)"
+				red="$(tput setaf 1)"
+				green="$(tput setaf 2)"
+				yellow="$(tput setaf 3)"
+				reset="$(tput sgr0)"
+				echo "$output" | sed -e 's:down$:'"$red"'&'"$reset"':' -e 's:running$:'"$yellow"'&'"$reset"':' -e 's:ready$:'"$green"'&'"$reset"':'
+			else
+				cd "$WSUNIT_STATE_DIR/state" && grep -H ^ *
 			fi
-		done
-		echo "}"
-	;;
+		;;
 
-	shutdown)
-		pkill -F "$WSUNIT_STATE_DIR/wsunitd.pid" -TERM
-	;;
+		trigger)
+			echo "$2" >>"$WSUNIT_STATE_DIR/events"
+			shift
+		;;
 
-	bump)
-		bump
-	;;
+		wait)
+			unittest "$1"
+			waitstate "$1" "$2"
+			shift 2
+		;;
 
-	refresh)
-		pkill -F "$WSUNIT_STATE_DIR/wsunitd.pid" -USR2
-	;;
+		"+d")
+			unittest "$2"
+			unittest "$3"
+			mkdir -p "$WSUNIT_CONFIG_DIR/$2/deps"
+			touch "$WSUNIT_CONFIG_DIR/$2/deps/$3"
+			shift 2
+		;;
 
-	wait)
-		unittest "$1"
-		waitstate "$1" "$2"
-	;;
+		"-d")
+			unittest "$2"
+			unittest "$3"
+			rm "$WSUNIT_CONFIG_DIR/$2/deps/$3" 2>/dev/null || true
+			shift 2
+		;;
 
-	"+w")
-		unittest "$2"
-		touch "$WSUNIT_STATE_DIR/wanted/$2"
-	;;
+		"+m")
+			unittest "$2"
+			touch "$WSUNIT_STATE_DIR/masked/$2"
+			shift
+		;;
 
-	"-w")
-		unittest "$2"
-		rm "$WSUNIT_STATE_DIR/wanted/$2" 2>/dev/null || true
-	;;
+		"-m")
+			unittest "$2"
+			rm "$WSUNIT_STATE_DIR/masked/$2" 2>/dev/null || true
+			shift
+		;;
 
-	"+m")
-		unittest "$2"
-		touch "$WSUNIT_STATE_DIR/masked/$2"
-	;;
+		"+r")
+			unittest "$2"
+			unittest "$3"
+			mkdir -p "$WSUNIT_CONFIG_DIR/$2/revdeps"
+			touch "$WSUNIT_CONFIG_DIR/$2/revdeps/$3"
+			shift 2
+		;;
 
-	"-m")
-		unittest "$2"
-		rm "$WSUNIT_STATE_DIR/masked/$2" 2>/dev/null || true
-	;;
+		"-r")
+			unittest "$2"
+			unittest "$3"
+			rm "$WSUNIT_CONFIG_DIR/$2/revdeps/$3" 2>/dev/null || true
+			shift 2
+		;;
 
-	"+d")
-		unittest "$2"
-		unittest "$3"
-		mkdir -p "$WSUNIT_CONFIG_DIR/$2/deps"
-		touch "$WSUNIT_CONFIG_DIR/$2/deps/$3"
-	;;
+		"+w")
+			unittest "$2"
+			touch "$WSUNIT_STATE_DIR/wanted/$2"
+			shift
+		;;
 
-	"-d")
-		unittest "$2"
-		unittest "$3"
-		rm "$WSUNIT_CONFIG_DIR/$2/deps/$3" 2>/dev/null || true
-	;;
+		"-w")
+			unittest "$2"
+			rm "$WSUNIT_STATE_DIR/wanted/$2" 2>/dev/null || true
+			shift
+		;;
 
-	"+r")
-		unittest "$2"
-		unittest "$3"
-		mkdir -p "$WSUNIT_CONFIG_DIR/$2/revdeps"
-		touch "$WSUNIT_CONFIG_DIR/$2/revdeps/$3"
-	;;
-
-	"-r")
-		unittest "$2"
-		unittest "$3"
-		rm "$WSUNIT_CONFIG_DIR/$2/revdeps/$3" 2>/dev/null || true
-	;;
-
-	"restart")
-		unittest "$2"
-
-		touch "$WSUNIT_STATE_DIR/masked/$2"
-		bump
-		waitstate "$2" "down"
-
-		rm "$WSUNIT_STATE_DIR/masked/$2"
-		bump
-		waitstate "$2" "ready"
-		# TODO: what if service not needed?
-	;;
-
-	"logs")
-		tail -f "$WSUNIT_LOG_DIR/$2."*
-	;;
-
-	"trigger")
-		echo "$2" >>"$WSUNIT_STATE_DIR/events"
-	;;
-
-	"signal")
-		unittest "$3"
-		pkill --signal "$2" --pidfile "$WSUNIT_STATE_DIR/pid/$3"
-	;;
-
-	*)
-		# TODO
-		exit 1
-	;;
-esac
+		*)
+			echo "Did not understand option: $1" >&2
+			echo
+			usage
+			exit 1
+		;;
+	esac
+	shift
+done
