@@ -32,7 +32,7 @@ function bump() {
 
 function waitstate() {
 	while [ "$(cat "$WSUNIT_STATE_DIR/state/$1")" != "$2" ]; do
-		inotifywait --quiet --quiet --timeout 3 "$WSUNIT_STATE_DIR/state/$1"
+		inotifywait --quiet --quiet --timeout 3 "$WSUNIT_STATE_DIR/state/$1" || true
 	done
 }
 
@@ -224,8 +224,8 @@ while [ -n "$1" ]; do
 		;;
 
 		wait)
-			unittest "$1"
-			waitstate "$1" "$2"
+			unittest "$2"
+			waitstate "$2" "$3"
 			shift 2
 		;;
 
@@ -292,5 +292,3 @@ while [ -n "$1" ]; do
 	esac
 	shift
 done
-
-true
