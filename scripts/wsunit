@@ -8,7 +8,7 @@ case "$(id -u)" in
 	;;
 
 	*)
-		test -n "$WSUNIT_CONFIG_DIR" || export WSUNIT_CONFIG_DIR="${XDG_CONFIG_HOME:-$home/.config}/wsunit"
+		test -n "$WSUNIT_CONFIG_DIR" || export WSUNIT_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/wsunit"
 		test -n "$WSUNIT_STATE_DIR"  || export WSUNIT_STATE_DIR="$XDG_RUNTIME_DIR/wsunit"
 		test -n "$WSUNIT_LOG_DIR"    || export WSUNIT_LOG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/wsunit/log"
 	;;
