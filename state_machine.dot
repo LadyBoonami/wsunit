@@ -10,6 +10,7 @@ digraph {
 	IN_RDY_ERR;
 	IN_RUN;
 	IN_STOP;
+	IN_RESTART;
 
 
 	node [shape="diamond"];
@@ -21,7 +22,8 @@ digraph {
 	check_rdy_running [label="./ready running?"];
 	check_run_running [label="./run running?"];
 	check_stop [label="have ./stop script?"];
-	check_restart [label="have ./restart file and needed and not blocked?"];
+	check_should_restart [label="unit needed and not blocked?"];
+	check_restart [label="have ./restart script?"];
 
 
 	node [shape="box"];
@@ -33,6 +35,9 @@ digraph {
 	kill_rdy [label="kill ./ready"];
 	kill_run [label="kill ./run"];
 	start_stop [label="fork ./stop"];
+	mask_bump [label="mask unit; bump"];
+	start_restart [label="fork ./restart"];
+	start_sleep [label="fork sleep 5"];
 
 
 	edge [style="dashed"];
@@ -45,7 +50,7 @@ digraph {
 	IN_LOGROT:se -> IN_LOGROT:e [label="start/stop request"];
 
 	IN_START:s -> check_run [label="./start exit ok"];
-	IN_START:w -> DOWN [label="./start exit error"];
+	IN_START:sw -> check_stop:w [label="./start exit error"];
 	IN_START:se -> IN_START:e [label="start/stop request"];
 
 	IN_RDY:s -> UP [label="./ready exit ok"];
@@ -63,8 +68,12 @@ digraph {
 	IN_RDY_ERR:s -> check_stop [label="./ready exit"];
 	IN_RDY_ERR:sw -> IN_RDY_ERR:w [label="start/stop request"];
 
-	IN_STOP:s -> check_restart [label="./stop exit"];
+	IN_STOP:s -> check_should_restart [label="./stop exit"];
 	IN_STOP:sw -> IN_STOP:w [label="start/stop request"];
+
+	IN_RESTART:e -> check_logrot:ne [label="./restart exit ok"];
+	IN_RESTART:s -> mask_bump:n [label="./restart exit error"];
+	IN_RESTART:s -> IN_RESTART:w [label="start/stop request"];
 
 
 	edge [style="solid"];
@@ -88,10 +97,13 @@ digraph {
 	check_run_running:se -> check_stop [label="no"];
 
 	check_stop:sw -> start_stop [label="yes"];
-	check_stop:se -> check_restart [label="no"];
+	check_stop:se -> check_should_restart [label="no"];
 
-	check_restart:sw -> check_logrot:ne [label="yes"];
-	check_restart:se -> DOWN [label="no"];
+	check_should_restart:sw -> check_restart [label="yes"];
+	check_should_restart:se -> DOWN [label="no"];
+
+	check_restart:sw -> start_restart [label="yes"];
+	check_restart:se -> start_sleep [label="no"];
 
 
 	edge [style="solid"];
@@ -103,4 +115,7 @@ digraph {
 	kill_rdy:s -> IN_RDY_ERR;
 	kill_run:s -> IN_RUN;
 	start_stop:s -> IN_STOP;
+	mask_bump:sw -> DOWN;
+	start_restart:s -> IN_RESTART:nw;
+	start_sleep:s -> IN_RESTART:ne;
 }

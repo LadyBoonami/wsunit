@@ -36,16 +36,16 @@ class unit : public enable_shared_from_this<unit> {
 		bool blocked    (void);
 		bool can_start  (string* reason = 0);
 		bool can_stop   (string* reason = 0);
-		bool restart    (void);
 		bool need_settle(void);
 
-		bool has_logrot_script(void);
-		bool has_start_script (void);
-		bool has_run_script   (void);
-		bool has_rdy_script   (void);
-		bool has_stop_script  (void);
+		bool has_logrot_script (void);
+		bool has_start_script  (void);
+		bool has_run_script    (void);
+		bool has_rdy_script    (void);
+		bool has_stop_script   (void);
+		bool has_restart_script(void);
 
-		enum state_t { DOWN, IN_LOGROT, IN_START, IN_RDY, UP, IN_RDY_ERR, IN_RUN, IN_STOP };
+		enum state_t { DOWN, IN_LOGROT, IN_START, IN_RDY, UP, IN_RDY_ERR, IN_RUN, IN_STOP, IN_RESTART };
 		enum state_t get_state(void);
 		static string state_descr     (state_t state);
 		static string term_state_descr(state_t state);
@@ -59,11 +59,12 @@ class unit : public enable_shared_from_this<unit> {
 		const string name_;
 		state_t state;
 
-		pid_t logrot_pid;
-		pid_t  start_pid;
-		pid_t    rdy_pid;
-		pid_t    run_pid;
-		pid_t   stop_pid;
+		pid_t  logrot_pid;
+		pid_t   start_pid;
+		pid_t     rdy_pid;
+		pid_t     run_pid;
+		pid_t    stop_pid;
+		pid_t restart_pid;
 
 		void set_state(state_t state);
 
@@ -77,21 +78,23 @@ class unit : public enable_shared_from_this<unit> {
 		void step_have_stop   (void);
 		void step_have_restart(void);
 
-		void fork_logrot_script(void);
-		void fork_start_script (void);
-		void fork_run_script   (void);
-		void fork_rdy_script   (void);
-		void fork_stop_script  (void);
+		void fork_logrot_script (void);
+		void fork_start_script  (void);
+		void fork_run_script    (void);
+		void fork_rdy_script    (void);
+		void fork_stop_script   (void);
+		void fork_restart_script(void);
 
 		void kill_rdy_script(void);
 		void kill_run_script(void);
 
-		static void on_logrot_exit(pid_t pid, shared_ptr<unit> u, int status);
-		static void on_start_exit (pid_t pid, shared_ptr<unit> u, int status);
-		static void on_rdy_exit   (pid_t pid, shared_ptr<unit> u, int status);
-		static void on_run_exit   (pid_t pid, shared_ptr<unit> u, int status);
-		static void on_stop_exit  (pid_t pid, shared_ptr<unit> u, int status);
-		static void on_event_exit (pid_t pid, shared_ptr<unit> u, int status);
+		static void on_logrot_exit (pid_t pid, shared_ptr<unit> u, int status);
+		static void on_start_exit  (pid_t pid, shared_ptr<unit> u, int status);
+		static void on_rdy_exit    (pid_t pid, shared_ptr<unit> u, int status);
+		static void on_run_exit    (pid_t pid, shared_ptr<unit> u, int status);
+		static void on_stop_exit   (pid_t pid, shared_ptr<unit> u, int status);
+		static void on_restart_exit(pid_t pid, shared_ptr<unit> u, int status);
+		static void on_event_exit  (pid_t pid, shared_ptr<unit> u, int status);
 };
 
 class depgraph {

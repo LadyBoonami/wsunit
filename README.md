@@ -29,12 +29,11 @@ number of the following:
 - An executable `run` file.
 - An executable `ready` file.
 - An executable `stop` file.
+- An executable `restart` file.
 - A directory named `deps`. Every file in this directory declares a dependency
   on the unit with the same name. File contents are ignored.
 - A directory named `revdeps`. Every file in this directory declares a reverse
   dependency on the unit with the same name. File contents are ignored.
-- A file named `restart`, indicating that the unit should be restarted when
-  it goes down unexpectedly. Not implemented yet.
 - A file named `start-wait-settle`, indicating that the unit should only be
   started after all units that should be brought down have reached the _down_
   state.
@@ -104,8 +103,8 @@ On start (each if applicable):
   to the `DOWN` state.
 - The `start` file is called with the unit's directory in `WSUNIT_CONFIG_DIR` as
   working directory, stdout and stderr will append to
-  `WSUNIT_LOG_DIR/<name>.log`. If this script fails, the unit returns to the
-  `DOWN` state.
+  `WSUNIT_LOG_DIR/<name>.log`. If this script fails, `stop` is run before the
+  unit returns to the `DOWN` state.
 - The `run` file is started with the unit's directory in `WSUNIT_CONFIG_DIR` as
   working directory, stdout and stderr will append to
   `WSUNIT_LOG_DIR/<name>.log`. If this script exits, the unit begins the stop
@@ -119,8 +118,12 @@ On stop (each if applicable):
 
 - The `stop` file is called with the unit's directory in `WSUNIT_CONFIG_DIR` as
   working directory, stdout and stderr will append to
-  `WSUNIT_LOG_DIR/<name>.log`. The unit is marked as down as soon as this script
-  exits.
+  `WSUNIT_LOG_DIR/<name>.log`.
+- If the unit is not needed or masked, it returns to the `DOWN` state.
+  Otherwise, the `restart` script (or alternatively `sleep 5`) is run. If it
+  exits successfully, the unit is started again as described above. If it exits
+  with an error, the unit is masked and its reverse dependencies are brought
+  down.
 
 Details:
 
@@ -136,6 +139,7 @@ Details:
 | `IN_RDY_ERR`   | _running_      |
 | `IN_RUN`       | _running_      |
 | `IN_STOP`      | _running_      |
+| `IN_RESTART`   | _running_      |
 
 ## Events
 

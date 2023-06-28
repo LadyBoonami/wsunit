@@ -6,7 +6,7 @@
 
 
 
-unit::unit(string name) : name_(name), state(DOWN), logrot_pid(0), start_pid(0), rdy_pid(0), run_pid(0), stop_pid(0) {
+unit::unit(string name) : name_(name), state(DOWN), logrot_pid(0), start_pid(0), rdy_pid(0), run_pid(0), stop_pid(0), restart_pid(0) {
 	std::ofstream(statedir / "state" / name_) << "down" << endl;
 }
 
@@ -64,10 +64,6 @@ bool unit::can_stop(string* reason) {
 	return true;
 }
 
-bool unit::restart(void) {
-	return exists(dir() / "restart");
-}
-
 bool unit::need_settle(void) {
 	return name_ == "@shutdown" || exists(dir() / "start-wait-settled");
 }
@@ -80,10 +76,11 @@ bool unit::has_logrot_script(void) {
 	return false;
 }
 
-bool unit::has_start_script(void) { auto p = dir() / "start"    ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_run_script  (void) { auto p = dir() / "run"      ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_rdy_script  (void) { auto p = dir() / "ready"    ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
-bool unit::has_stop_script (void) { auto p = dir() / "stop"     ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_start_script  (void) { auto p = dir() / "start"  ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_run_script    (void) { auto p = dir() / "run"    ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_rdy_script    (void) { auto p = dir() / "ready"  ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_stop_script   (void) { auto p = dir() / "stop"   ; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
+bool unit::has_restart_script(void) { auto p = dir() / "restart"; return is_regular_file(p) && access(p.c_str(), X_OK) == 0; }
 
 enum unit::state_t unit::get_state(void) { return state; }
 
@@ -135,6 +132,10 @@ bool unit::request_start(string* reason) {
 		case IN_STOP:
 			if (reason) *reason = "currently stopping";
 			return false;
+
+		case IN_RESTART:
+			if (reason) *reason = "currently restarting";
+			return true;
 	}
 	assert(false);
 }
@@ -164,6 +165,10 @@ bool unit::request_stop(string* reason) {
 		case IN_STOP:
 			if (reason) *reason = "already stopping";
 			return true;
+
+		case IN_RESTART:
+			if (reason) *reason = "currently restarting";
+			return false;
 	}
 	assert(false);
 }
@@ -215,7 +220,12 @@ void unit::step_active_rdy  (void) { if (rdy_pid != 0       ) kill_rdy_script   
 void unit::step_active_run  (void) { if (run_pid != 0       ) kill_run_script   (); else step_have_stop   (); }
 void unit::step_have_stop   (void) { if (has_stop_script  ()) fork_stop_script  (); else step_have_restart(); }
 
-void unit::step_have_restart(void) { if (restart() && needed() && !blocked()) step_have_logrot(); else set_state(DOWN); }
+void unit::step_have_restart(void) {
+	if (needed() && !blocked())
+		fork_restart_script();
+	else
+		set_state(DOWN);
+}
 
 void unit::fork_logrot_script(void) {
 	assert(has_logrot_script());
@@ -354,6 +364,46 @@ void unit::fork_stop_script(void) {
 	}
 }
 
+void unit::fork_restart_script(void) {
+	bool use_script;
+	if (has_restart_script()) {
+		use_script = true;
+		log::note(term_name() + ": exec stop script");
+	}
+	else {
+		use_script = false;
+		log::note(term_name() + ": no ./restart script, exec sleep 5");
+	}
+	pid_t pid = fork_();
+	if (pid == 0) {
+		if (chdir(dir().c_str()) == -1) {
+			log::err("failed to chdir to " + dir().string() + ": " + strerror(errno));
+			exit(1);
+		}
+		pid_t sid = setsid();
+		if (sid == -1) {
+			log::err(string("failed to run setsid: ") + strerror(errno));
+			exit(1);
+		}
+		log::debug(string("fork restart as pid ") + to_string(getpid()) + " sid " + to_string(sid));
+		output_logfile(name() + ".log");
+		if (use_script) {
+			log::note("launch ./restart");
+			execl((dir() / "restart").c_str(), (dir() / "restart").c_str(), (char*) NULL);
+		}
+		else {
+			log::note("launch sleep 5");
+			execlp("sleep", "sleep", "5", (char*) NULL);
+		}
+		exit(1);
+	}
+	else if (pid > 0) {
+		term_add(pid, on_restart_exit, shared_from_this());
+		restart_pid = pid;
+		set_state(IN_RESTART);
+	}
+}
+
 void unit::kill_rdy_script(void) {
 	assert(rdy_pid);
 	log::debug(term_name() + ": kill(" + to_string(rdy_pid) + ", " + signal_string(SIGTERM) + ")");
@@ -396,7 +446,7 @@ void unit::kill_run_script(void) {
 		if (status_ok(u, "start", status))
 			u->step_have_run();
 		else
-			u->set_state(DOWN);
+			u->step_have_stop();
 
 		depgraph::queue_step();
 	}
@@ -462,6 +512,17 @@ void unit::kill_run_script(void) {
 		u->step_have_restart();
 
 		depgraph::queue_step();
+	}
+
+	void unit::on_restart_exit(pid_t pid, shared_ptr<unit> u, int status) {
+		assert(u->state == IN_RESTART);
+
+		log::debug(u->term_name() + ": kill(-" + to_string(u->restart_pid) + ", " + signal_string(SIGTERM) + ")");
+		kill(-u->restart_pid, SIGTERM);
+		u->restart_pid = 0;
+
+		status_ok(u, "restart", status);
+		depgraph::start(u);
 	}
 
 	void unit::on_event_exit(pid_t pid, shared_ptr<unit> u, int status) {
