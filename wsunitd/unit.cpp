@@ -153,7 +153,7 @@ bool unit::request_stop(string* reason) {
 			return false;
 
 		case UP:
-			if (!can_stop())
+			if (!can_stop(reason))
 				return false;
 
 			if (reason) *reason = "now stopping";
@@ -221,10 +221,14 @@ void unit::step_active_run  (void) { if (run_pid != 0       ) kill_run_script   
 void unit::step_have_stop   (void) { if (has_stop_script  ()) fork_stop_script  (); else step_have_restart(); }
 
 void unit::step_have_restart(void) {
-	if (needed() && !blocked())
+	if (needed() && !blocked()) {
+		log::debug(term_name() + ": should be restarted");
 		fork_restart_script();
-	else
+	}
+	else {
+		log::debug(term_name() + ": should not be restarted");
 		set_state(DOWN);
+	}
 }
 
 void unit::fork_logrot_script(void) {
@@ -368,7 +372,7 @@ void unit::fork_restart_script(void) {
 	bool use_script;
 	if (has_restart_script()) {
 		use_script = true;
-		log::note(term_name() + ": exec stop script");
+		log::note(term_name() + ": exec restart script");
 	}
 	else {
 		use_script = false;
@@ -522,7 +526,16 @@ void unit::kill_run_script(void) {
 		u->restart_pid = 0;
 
 		status_ok(u, "restart", status);
-		depgraph::start(u);
+
+		if (u->needed() && !u->blocked()) {
+			log::debug(u->term_name() + ": should still be restarted");
+			depgraph::start(u, false);
+		}
+		else {
+			log::debug(u->term_name() + ": should not be restarted anymore");
+			u->set_state(DOWN);
+		}
+		depgraph::queue_step();
 	}
 
 	void unit::on_event_exit(pid_t pid, shared_ptr<unit> u, int status) {
