@@ -527,14 +527,15 @@ void unit::kill_run_script(void) {
 
 		status_ok(u, "restart", status);
 
+		u->set_state(DOWN);
+
 		if (u->needed() && !u->blocked()) {
 			log::debug(u->term_name() + ": should still be restarted");
 			depgraph::start(u, false);
 		}
-		else {
+		else
 			log::debug(u->term_name() + ": should not be restarted anymore");
-			u->set_state(DOWN);
-		}
+
 		depgraph::queue_step();
 	}
 
