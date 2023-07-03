@@ -1,5 +1,5 @@
 wsunitd/wsunitd
-cronexec/cronexec
+unittool/unittool
 config/
 state/
 *.o

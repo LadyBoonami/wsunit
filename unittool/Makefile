@@ -24,12 +24,12 @@ ifneq ($(DEBUG),)
     LDFLAGS=-fsanitize=address -fsanitize=undefined
 endif
 
-hdrs=cronexec.hpp
-srcs=cronexec.cpp
+hdrs=unittool.hpp
+srcs=cronexec.cpp runas.cpp unittool.cpp
 objs=$(srcs:.cpp=.o)
 
-all: cronexec
-cronexec: $(objs)
+all: unittool
+unittool: $(objs)
 	$(CXX) $(LDFLAGS) $^ -o $@
 
 $(objs): %.o: %.cpp $(hdrs)
@@ -38,4 +38,4 @@ $(objs): %.o: %.cpp $(hdrs)
 
 .PHONY: clean
 clean:
-	-rm cronexec *.o
+	-rm unittool *.o
