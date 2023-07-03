@@ -42,6 +42,10 @@ void cronexec::main(int argc, char** argv) {
 	std::shared_ptr<match> mon  = parse(argv[5]);
 	std::shared_ptr<match> wday = parse(argv[6]);
 
+	std::string inp;
+	if (!isatty(0))
+		inp = string(istreambuf_iterator<char>(cin), {});
+
 	for(;;) {
 		time_t timestamp = time(0);
 		struct tm t;
@@ -54,19 +58,44 @@ void cronexec::main(int argc, char** argv) {
 			mon->matches(t.tm_mon ) &&
 			(wday->matches(t.tm_wday) || (t.tm_wday == 0 && wday->matches(7)))
 		) {
-			pid_t pid = fork();
+			int pipefd[2];
+			if (pipe(pipefd) == 0) {
+				pid_t pid = fork();
 
-			if (pid == 0) {
-				execvp(argv[7], argv + 7);
-				cerr << "could not start " << argv[7] << ": " << strerror(errno) << endl;
-				exit(1);
+				if (pid == 0) {
+					dup2(pipefd[0], 0);
+					close(pipefd[0]);
+					close(pipefd[1]);
+
+					execvp(argv[7], argv + 7);
+					cerr << "could not start " << argv[7] << ": " << strerror(errno) << endl;
+					exit(1);
+				}
+
+				else if (pid < 0)
+					cerr << "could not start " << argv[7] << ": " << strerror(errno) << endl;
+
+				else {
+					close(pipefd[0]);
+
+					ssize_t l = inp.length() + 1;
+					const char* buf = inp.c_str();
+					for (;;) {
+						if (l <= 0) break;
+						if (waitpid(pid, 0, WNOHANG) > 0) break;
+
+						ssize_t n = write(pipefd[1], buf, l);
+						if (n < 0) break;
+						buf += n;
+						l   -= n;
+					}
+					close(pipefd[1]);
+
+					waitpid(pid, 0, 0);
+				}
 			}
-
-			else if (pid < 0)
-				cerr << "could not start " << argv[7] << ": " << strerror(errno) << endl;
-
 			else
-				waitpid(pid, 0, 0);
+				cerr << "could not create pipe to child process: " << strerror(errno) << endl;
 		}
 
 		t.tm_min += 1;
