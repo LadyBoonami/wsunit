@@ -16,7 +16,7 @@ while [ -n "$1" ]; do
 	shift
 done
 
-if [ -n "$XDG_RUNTIME_DIR" ]; then
+if [ -z "$XDG_RUNTIME_DIR" ]; then
 	export XDG_RUNTIME_DIR="/tmp/$(id -u).runtime"
 	mkdir -p "$XDG_RUNTIME_DIR" || exit 1
 	chown "$(id -u):$(id -g)" "$XDG_RUNTIME_DIR" || exit 1
