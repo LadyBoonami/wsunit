@@ -78,7 +78,7 @@ void cronexec::main(int argc, char** argv) {
 				else {
 					close(pipefd[0]);
 
-					ssize_t l = inp.length() + 1;
+					ssize_t l = inp.length();
 					const char* buf = inp.c_str();
 					for (;;) {
 						if (l <= 0) break;
