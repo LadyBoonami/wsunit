@@ -529,6 +529,13 @@ void unit::kill_run_script(void) {
 
 		u->set_state(DOWN);
 
+		if ((WIFEXITED(status) && WEXITSTATUS(status) != 0) || WIFSIGNALED(status)) {
+			log::debug(u->term_name() + ": restart script failed, masking");
+			ofstream(statedir / "masked" / u->name()).close();
+			depgraph::start_stop_units();
+			return;
+		}
+
 		if (u->needed() && !u->blocked()) {
 			log::debug(u->term_name() + ": should still be restarted");
 			depgraph::start(u, false);
